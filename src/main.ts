@@ -1,8 +1,10 @@
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
-
-createApp(App).mount('#app').$nextTick(() => {
+import { Icon } from "@iconify/vue";
+const app = createApp(App)
+app.component("Icon", Icon);
+app.mount('#app').$nextTick(() => {
   // Use contextBridge
   window.ipcRenderer.on('main-process-message', (_event, message) => {
     console.log(message)
