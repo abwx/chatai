@@ -3,7 +3,7 @@
     <!-- 左侧会话列表 -->
     <div class="conversation-list">
       <div
-        v-for="(item, index) in conversationList"
+        v-for="(item, index) in conversations"
         :key="index"
         class="conversation-item"
         @click="selectConversation(item)"
@@ -36,19 +36,9 @@
 import Button from './Button.vue'
 import { useRouter } from 'vue-router'
 import { ConversationProps } from '../ts/type'
+import { conversations } from '../testData'
 const router = useRouter()
-// 重新定义会话项类型，匹配新的数据结构
 
-// 模拟会话列表数据（使用你提供的格式）
-const conversationList: ConversationProps[] = [
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 1, updatedAt: '2024-08-31', providerId: 1 },
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 2, updatedAt: '2024-08-31', providerId: 1 }, 
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 3, updatedAt: '2024-08-31', providerId: 1 }, 
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 3, updatedAt: '2024-08-31', providerId: 1 }, 
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 3, updatedAt: '2024-08-31', providerId: 1 }, 
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 3, updatedAt: '2024-08-31', providerId: 1 }, 
-  { selectedModel: 'GPT-3.5-Turbo', createdAt: '2024-08-31',title:'什么是光合作用？', id: 3, updatedAt: '2024-08-31', providerId: 1 }, 
-]
 
 // 选中会话
 const selectConversation = (item: ConversationProps) => {

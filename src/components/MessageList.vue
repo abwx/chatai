@@ -12,7 +12,7 @@
     <!-- 消息列表 -->
     <div class="message-list" ref="messageListRef">
       <div
-        v-for="(item, index) in messageList"
+        v-for="(item, index) in messages"
         :key="index"
         class="message-item"
         :class="item.type === 'question' ? 'message-user' : 'message-assistant'"
@@ -42,6 +42,7 @@
 import { MessageProps } from '../ts/type'
 import { ref, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { messages } from '../testData'
   import Button from './Button.vue'
   const route = useRoute()
 
@@ -50,48 +51,6 @@ import { useRoute } from 'vue-router'
   const currentModel = computed(() => route.query.model as string | undefined)
 
   // 模拟消息列表数据（和截图完全一致）
-  const messageList = ref<MessageProps[]>([
-    {
-      type: 'question',
-      content: '什么是光合作用?',
-      createdAt: '2024-09-01',
-      id: 1,
-      conversationId: 1,
-      updatedAt: '2024-09-01'
-    },
-    {
-      type: 'answer',
-      content: '绿色植物通过叶绿体利用光能，将二氧化碳和水转化为有机物（主要是淀粉等糖类物质），同时释放氧气的过程。',
-      createdAt: '2024-09-01',
-      id: 2,
-      conversationId: 1,
-      updatedAt: '2024-09-01'
-    },
-    {
-      type: 'question',
-      content: '那么光能又是从哪里获取来的呢?',
-      createdAt: '2024-09-01',
-      id: 3,
-      conversationId: 1,
-      updatedAt: '2024-09-01'
-    },
-    {
-      type: 'answer',
-      content: '太阳获得的。太阳是地球上最主要的能量来源，它通过辐射光能来提供能量。植物通过叶子中的叶绿素吸收',
-      createdAt: '2024-09-01',
-      id: 4,
-      conversationId: 1,
-      updatedAt: '2024-09-01'
-    },
-    {
-        type: 'question',
-      content: '总结一下我前面几个问题，生成一个摘要',  
-      createdAt: '2024-09-01',
-      id: 5,
-      conversationId: 1,
-      updatedAt: '2024-09-01'
-    }
-  ])
   
   // 输入框内容
   const inputText = ref<string>('')
@@ -136,11 +95,11 @@ import { useRoute } from 'vue-router'
     const nowStr = formatDateTime(now)
 
     // 添加新消息到列表
-    messageList.value.push({
+    messages.push({
       type: 'question',
       content: inputText.value,
       createdAt: nowStr,
-      id: messageList.value.length + 1,
+      id: messages.length + 1,
       conversationId: 1,
       updatedAt: nowStr,
     })

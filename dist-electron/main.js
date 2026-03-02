@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 import path$1 from "node:path";
-import fs from "fs";
+import "fs";
 function __classPrivateFieldSet(receiver, state, value, kind, f) {
   if (typeof state === "function" ? receiver !== state || true : !state.has(receiver))
     throw new TypeError("Cannot write private member to an object whose class did not declare it");
@@ -6741,55 +6741,13 @@ new OpenAI({
   baseURL: "https://qianfan.baidubce.com/v2",
   apiKey: "bce-v3/ALTAK-bWi3NLXT3E7X32Fjj8LL5/3b0d63ecfcc9c65a744e7c147fa1cec6dec073dd"
 });
-const openai = new OpenAI(
+new OpenAI(
   {
     // 若没有配置环境变量，请用百炼API Key将下行替换为：apiKey: "sk-xxx",
     apiKey: "sk-41562ac6a2c64c428a7219eba7e928d2",
     baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   }
 );
-async function mainAliyunFile() {
-  var _a2, _b;
-  try {
-    const __dirname2 = path$1.dirname(fileURLToPath(import.meta.url));
-    const filePath = path$1.resolve(__dirname2, "../src/assets/test.txt");
-    const fileStat = fs.statSync(filePath);
-    const fileUploadResponse = await openai.files.create({
-      file: fs.createReadStream(filePath),
-      // 读取本地文件流
-      purpose: "file-extract"
-      // 文件用途：文件解析（和Python保持一致）
-    });
-    const fileId = fileUploadResponse.id;
-    const completion = await openai.chat.completions.create({
-      model: "qwen-long",
-      // 阿里云百炼模型（和图片接口一致）
-      messages: [
-        {
-          role: "system",
-          content: "你是一个文件解析助手，帮我解析上传的文件内容并总结"
-        },
-        {
-          role: "system",
-          content: `fileid://${fileId}`
-        },
-        {
-          role: "user",
-          content: "帮我解析并总结这个文件的核心内容"
-        }
-      ],
-      stream: true,
-      // 流式输出（和图片接口保持一致）
-      stream_options: { include_usage: true }
-      // 返回Token用量
-    });
-    for await (const chunk of completion) {
-      process.stdout.write(((_b = (_a2 = chunk.choices[0]) == null ? void 0 : _a2.delta) == null ? void 0 : _b.content) || "");
-    }
-  } catch (error) {
-    console.error("操作失败：", error);
-  }
-}
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -6801,7 +6759,7 @@ app.on("activate", () => {
     createWindow();
   }
 });
-app.whenReady().then(createWindow).then(mainAliyunFile);
+app.whenReady().then(createWindow);
 ipcMain.on("set-title", (event, title) => {
   const target = BrowserWindow.fromWebContents(event.sender);
   target == null ? void 0 : target.setTitle(String(title));

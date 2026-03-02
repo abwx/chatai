@@ -4,6 +4,7 @@ import path from "node:path";
 import OpenAI from "openai";
 import fs from 'fs'  
 
+
 // 设置输出编码为 UTF-8，解决 Windows 终端中文乱码问题
 if (process.platform === 'win32') {
   process.stdout.setDefaultEncoding('utf8');
@@ -182,6 +183,7 @@ async function mainAliyunFile() {
    
   }
 }
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -200,7 +202,7 @@ app.on("activate", () => {
   }
 });
 
-app.whenReady().then(createWindow).then(mainAliyunFile);
+app.whenReady().then(createWindow);
 ipcMain.on("set-title", (event, title) => {
   const target = BrowserWindow.fromWebContents(event.sender);
   target?.setTitle(String(title));
