@@ -94,7 +94,7 @@
       />
       <Button color="green" @click="handleSend" :disabled="!inputText.trim() || !selectedModel">
         <Icon icon="radix-icons:paper-plane" width="15" height="15"></Icon>
-        发送
+        发送问题
       </Button>
     </div>
   </div>
@@ -104,6 +104,7 @@
 import { ref, onMounted, computed } from 'vue'
 import Button from './Button.vue'
 import { providers } from '../testData'
+import { useRouter } from 'vue-router'
 // 严格按照你提供的 Radix Vue 导入格式
 import {
   DropdownMenuContent,
@@ -121,6 +122,7 @@ import { db } from '../db'
 
 // 响应式数据
 const selectedModel = ref<string>('')
+const router = useRouter()  
 const inputText = ref<string>('')
 const hasChatHistory = ref<boolean>(false)
 
@@ -142,6 +144,10 @@ const handleSend = () => {
   console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
   hasChatHistory.value = true
   inputText.value = ''
+  router.push({
+    path: '/message',
+
+  })
 }
 async function initData() {
   await db.providers.bulkAdd(providers)
