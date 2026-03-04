@@ -41,7 +41,7 @@ export const providers: ProviderProps[] = [
     title: '阿里灵积',
     desc: '通义千问',
     // https://help.aliyun.com/zh/dashscope/developer-reference/api-details?spm=a2c4g.11186623.0.0.5bf41507xgULX5#b148acc634pfc
-    models: ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-vl-plus'],
+    models: ['qwen-turbo', 'qwen3.5-plus', 'qwen-max', 'qwen-vl-plus','qwen-lang'],
     avatar: 'https://qph.cf2.poecdn.net/main-thumb-pb-4160791-200-qlqunomdvkyitpedtghnhsgjlutapgfl.jpeg',
     createdAt: '2024-07-03',
     updatedAt: '2024-07-03'
@@ -56,5 +56,14 @@ export const providers: ProviderProps[] = [
     avatar: 'https://qph.cf2.poecdn.net/main-thumb-pb-4981273-200-phhqenmywlkiybehuaqvsxpfekviajex.jpeg',
     createdAt: '2024-12-27',
     updatedAt: '2024-12-27'
-  }
+  },{     
+  id: 4,
+  name: 'doubao', 
+  title: '字节豆包',
+  desc: '字节跳动自研大模型',
+  models: ['doubao-2.0-pro', 'doubao-2.0-lite', 'doubao-2.0-mini', 'doubao-2.0-code', 'doubao-1.6-thinking'],
+  avatar: 'https://lf3-cdn-tos.byteimg.com/obj/doubao-public/ai-icon/doubao-logo-128.png',
+  createdAt: '2024-07-03',
+  updatedAt: '2026-02-14'
+}
 ]

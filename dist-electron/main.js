@@ -880,14 +880,14 @@ const levelNumbers = {
   info: 400,
   debug: 500
 };
-const parseLogLevel = (maybeLevel, sourceName, client) => {
+const parseLogLevel = (maybeLevel, sourceName, client2) => {
   if (!maybeLevel) {
     return void 0;
   }
   if (hasOwn(levelNumbers, maybeLevel)) {
     return maybeLevel;
   }
-  loggerFor(client).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers))}`);
+  loggerFor(client2).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers))}`);
   return void 0;
 };
 function noop() {
@@ -906,9 +906,9 @@ const noopLogger = {
   debug: noop
 };
 let cachedLoggers = /* @__PURE__ */ new WeakMap();
-function loggerFor(client) {
-  const logger = client.logger;
-  const logLevel = client.logLevel ?? "off";
+function loggerFor(client2) {
+  const logger = client2.logger;
+  const logLevel = client2.logLevel ?? "off";
   if (!logger) {
     return noopLogger;
   }
@@ -946,15 +946,15 @@ const formatRequestDetails = (details) => {
 };
 var _Stream_client;
 class Stream {
-  constructor(iterator, controller, client) {
+  constructor(iterator, controller, client2) {
     this.iterator = iterator;
     _Stream_client.set(this, void 0);
     this.controller = controller;
-    __classPrivateFieldSet(this, _Stream_client, client);
+    __classPrivateFieldSet(this, _Stream_client, client2);
   }
-  static fromSSEResponse(response, controller, client, synthesizeEventData) {
+  static fromSSEResponse(response, controller, client2, synthesizeEventData) {
     let consumed = false;
-    const logger = client ? loggerFor(client) : console;
+    const logger = client2 ? loggerFor(client2) : console;
     async function* iterator() {
       if (consumed) {
         throw new OpenAIError("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
@@ -1007,13 +1007,13 @@ class Stream {
           controller.abort();
       }
     }
-    return new Stream(iterator, controller, client);
+    return new Stream(iterator, controller, client2);
   }
   /**
    * Generates a Stream from a newline-separated ReadableStream
    * where each item is a JSON value.
    */
-  static fromReadableStream(readableStream, controller, client) {
+  static fromReadableStream(readableStream, controller, client2) {
     let consumed = false;
     async function* iterLines() {
       const lineDecoder = new LineDecoder();
@@ -1050,7 +1050,7 @@ class Stream {
           controller.abort();
       }
     }
-    return new Stream(iterator, controller, client);
+    return new Stream(iterator, controller, client2);
   }
   [(_Stream_client = /* @__PURE__ */ new WeakMap(), Symbol.asyncIterator)]() {
     return this.iterator();
@@ -1201,16 +1201,16 @@ function partition(str2, delimiter) {
   }
   return [str2, "", ""];
 }
-async function defaultParseResponse(client, props) {
+async function defaultParseResponse(client2, props) {
   const { response, requestLogID, retryOfRequestLogID, startTime } = props;
   const body = await (async () => {
     var _a2;
     if (props.options.stream) {
-      loggerFor(client).debug("response", response.status, response.url, response.headers, response.body);
+      loggerFor(client2).debug("response", response.status, response.url, response.headers, response.body);
       if (props.options.__streamClass) {
-        return props.options.__streamClass.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
+        return props.options.__streamClass.fromSSEResponse(response, props.controller, client2, props.options.__synthesizeEventData);
       }
-      return Stream.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
+      return Stream.fromSSEResponse(response, props.controller, client2, props.options.__synthesizeEventData);
     }
     if (response.status === 204) {
       return null;
@@ -1232,7 +1232,7 @@ async function defaultParseResponse(client, props) {
     const text = await response.text();
     return text;
   })();
-  loggerFor(client).debug(`[${requestLogID}] response parsed`, formatRequestDetails({
+  loggerFor(client2).debug(`[${requestLogID}] response parsed`, formatRequestDetails({
     retryOfRequestLogID,
     url: response.url,
     status: response.status,
@@ -1252,17 +1252,17 @@ function addRequestID(value, response) {
 }
 var _APIPromise_client;
 class APIPromise extends Promise {
-  constructor(client, responsePromise, parseResponse2 = defaultParseResponse) {
+  constructor(client2, responsePromise, parseResponse2 = defaultParseResponse) {
     super((resolve) => {
       resolve(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
     _APIPromise_client.set(this, void 0);
-    __classPrivateFieldSet(this, _APIPromise_client, client);
+    __classPrivateFieldSet(this, _APIPromise_client, client2);
   }
   _thenUnwrap(transform) {
-    return new APIPromise(__classPrivateFieldGet(this, _APIPromise_client, "f"), this.responsePromise, async (client, props) => addRequestID(transform(await this.parseResponse(client, props), props), props.response));
+    return new APIPromise(__classPrivateFieldGet(this, _APIPromise_client, "f"), this.responsePromise, async (client2, props) => addRequestID(transform(await this.parseResponse(client2, props), props), props.response));
   }
   /**
    * Gets the raw `Response` instance instead of parsing the response
@@ -1313,9 +1313,9 @@ class APIPromise extends Promise {
 _APIPromise_client = /* @__PURE__ */ new WeakMap();
 var _AbstractPage_client;
 class AbstractPage {
-  constructor(client, response, body, options) {
+  constructor(client2, response, body, options) {
     _AbstractPage_client.set(this, void 0);
-    __classPrivateFieldSet(this, _AbstractPage_client, client);
+    __classPrivateFieldSet(this, _AbstractPage_client, client2);
     this.options = options;
     this.response = response;
     this.body = body;
@@ -1350,8 +1350,8 @@ class AbstractPage {
   }
 }
 class PagePromise extends APIPromise {
-  constructor(client, request, Page2) {
-    super(client, request, async (client2, props) => new Page2(client2, props.response, await defaultParseResponse(client2, props), props.options));
+  constructor(client2, request, Page2) {
+    super(client2, request, async (client3, props) => new Page2(client3, props.response, await defaultParseResponse(client3, props), props.options));
   }
   /**
    * Allow auto-paginating iteration on an unawaited list call, eg:
@@ -1368,8 +1368,8 @@ class PagePromise extends APIPromise {
   }
 }
 class Page extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.object = body.object;
   }
@@ -1381,8 +1381,8 @@ class Page extends AbstractPage {
   }
 }
 class CursorPage extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.has_more = body.has_more || false;
   }
@@ -1412,8 +1412,8 @@ class CursorPage extends AbstractPage {
   }
 }
 class ConversationCursorPage extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.has_more = body.has_more || false;
     this.last_id = body.last_id || "";
@@ -1583,8 +1583,8 @@ function propsForError(value) {
   return `; props: [${props.map((p) => `"${p}"`).join(", ")}]`;
 }
 class APIResource {
-  constructor(client) {
-    this._client = client;
+  constructor(client2) {
+    this._client = client2;
   }
 }
 function encodeURIPath(str2) {
@@ -2061,7 +2061,7 @@ class AbstractChatCompletionRunner extends EventStream {
       this._emit("totalUsage", __classPrivateFieldGet(this, _AbstractChatCompletionRunner_instances, "m", _AbstractChatCompletionRunner_calculateTotalUsage).call(this));
     }
   }
-  async _createChatCompletion(client, params, options) {
+  async _createChatCompletion(client2, params, options) {
     const signal = options == null ? void 0 : options.signal;
     if (signal) {
       if (signal.aborted)
@@ -2069,17 +2069,17 @@ class AbstractChatCompletionRunner extends EventStream {
       signal.addEventListener("abort", () => this.controller.abort());
     }
     __classPrivateFieldGet(this, _AbstractChatCompletionRunner_instances, "m", _AbstractChatCompletionRunner_validateParams).call(this, params);
-    const chatCompletion = await client.chat.completions.create({ ...params, stream: false }, { ...options, signal: this.controller.signal });
+    const chatCompletion = await client2.chat.completions.create({ ...params, stream: false }, { ...options, signal: this.controller.signal });
     this._connected();
     return this._addChatCompletion(parseChatCompletion(chatCompletion, params));
   }
-  async _runChatCompletion(client, params, options) {
+  async _runChatCompletion(client2, params, options) {
     for (const message of params.messages) {
       this._addMessage(message, false);
     }
-    return await this._createChatCompletion(client, params, options);
+    return await this._createChatCompletion(client2, params, options);
   }
-  async _runTools(client, params, options) {
+  async _runTools(client2, params, options) {
     var _a2, _b, _c;
     const role = "tool";
     const { tool_choice = "auto", stream, ...restParams } = params;
@@ -2123,7 +2123,7 @@ class AbstractChatCompletionRunner extends EventStream {
       this._addMessage(message, false);
     }
     for (let i = 0; i < maxChatCompletions; ++i) {
-      const chatCompletion = await this._createChatCompletion(client, {
+      const chatCompletion = await this._createChatCompletion(client2, {
         ...restParams,
         tool_choice,
         tools,
@@ -2228,13 +2228,13 @@ _AbstractChatCompletionRunner_instances = /* @__PURE__ */ new WeakSet(), _Abstra
   return typeof rawContent === "string" ? rawContent : rawContent === void 0 ? "undefined" : JSON.stringify(rawContent);
 };
 class ChatCompletionRunner extends AbstractChatCompletionRunner {
-  static runTools(client, params, options) {
+  static runTools(client2, params, options) {
     const runner = new ChatCompletionRunner();
     const opts = {
       ...options,
       headers: { ...options == null ? void 0 : options.headers, "X-Stainless-Helper-Method": "runTools" }
     };
-    runner._run(() => runner._runTools(client, params, opts));
+    runner._run(() => runner._runTools(client2, params, opts));
     return runner;
   }
   _addMessage(message, emit = true) {
@@ -2480,12 +2480,12 @@ class ChatCompletionStream extends AbstractChatCompletionRunner {
     runner._run(() => runner._fromReadableStream(stream));
     return runner;
   }
-  static createChatCompletion(client, params, options) {
+  static createChatCompletion(client2, params, options) {
     const runner = new ChatCompletionStream(params);
-    runner._run(() => runner._runChatCompletion(client, { ...params, stream: true }, { ...options, headers: { ...options == null ? void 0 : options.headers, "X-Stainless-Helper-Method": "stream" } }));
+    runner._run(() => runner._runChatCompletion(client2, { ...params, stream: true }, { ...options, headers: { ...options == null ? void 0 : options.headers, "X-Stainless-Helper-Method": "stream" } }));
     return runner;
   }
-  async _createChatCompletion(client, params, options) {
+  async _createChatCompletion(client2, params, options) {
     var _a2;
     super._createChatCompletion;
     const signal = options == null ? void 0 : options.signal;
@@ -2495,7 +2495,7 @@ class ChatCompletionStream extends AbstractChatCompletionRunner {
       signal.addEventListener("abort", () => this.controller.abort());
     }
     __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_beginRequest).call(this);
-    const stream = await client.chat.completions.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
+    const stream = await client2.chat.completions.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
     this._connected();
     for await (const chunk of stream) {
       __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_addChunk).call(this, chunk);
@@ -2928,7 +2928,7 @@ class ChatCompletionStreamingRunner extends ChatCompletionStream {
     runner._run(() => runner._fromReadableStream(stream));
     return runner;
   }
-  static runTools(client, params, options) {
+  static runTools(client2, params, options) {
     const runner = new ChatCompletionStreamingRunner(
       // @ts-expect-error TODO these types are incompatible
       params
@@ -2937,7 +2937,7 @@ class ChatCompletionStreamingRunner extends ChatCompletionStream {
       ...options,
       headers: { ...options == null ? void 0 : options.headers, "X-Stainless-Helper-Method": "runTools" }
     };
-    runner._run(() => runner._runTools(client, params, opts));
+    runner._run(() => runner._runTools(client2, params, opts));
     return runner;
   }
 }
@@ -5227,15 +5227,15 @@ class ResponseStream extends EventStream {
     _ResponseStream_finalResponse.set(this, void 0);
     __classPrivateFieldSet(this, _ResponseStream_params, params);
   }
-  static createResponse(client, params, options) {
+  static createResponse(client2, params, options) {
     const runner = new ResponseStream(params);
-    runner._run(() => runner._createOrRetrieveResponse(client, params, {
+    runner._run(() => runner._createOrRetrieveResponse(client2, params, {
       ...options,
       headers: { ...options == null ? void 0 : options.headers, "X-Stainless-Helper-Method": "stream" }
     }));
     return runner;
   }
-  async _createOrRetrieveResponse(client, params, options) {
+  async _createOrRetrieveResponse(client2, params, options) {
     var _a2;
     const signal = options == null ? void 0 : options.signal;
     if (signal) {
@@ -5247,10 +5247,10 @@ class ResponseStream extends EventStream {
     let stream;
     let starting_after = null;
     if ("response_id" in params) {
-      stream = await client.responses.retrieve(params.response_id, { stream: true }, { ...options, signal: this.controller.signal, stream: true });
+      stream = await client2.responses.retrieve(params.response_id, { stream: true }, { ...options, signal: this.controller.signal, stream: true });
       starting_after = params.starting_after ?? null;
     } else {
-      stream = await client.responses.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
+      stream = await client2.responses.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
     }
     this._connected();
     for await (const event of stream) {
@@ -5889,12 +5889,12 @@ class FileBatches extends APIResource {
     }
     const configuredConcurrency = (options == null ? void 0 : options.maxConcurrency) ?? 5;
     const concurrencyLimit = Math.min(configuredConcurrency, files.length);
-    const client = this._client;
+    const client2 = this._client;
     const fileIterator = files.values();
     const allFileIds = [...fileIds];
     async function processFiles(iterator) {
       for (let item of iterator) {
-        const fileObj = await client.files.create({ file: item, purpose: "assistants" }, options);
+        const fileObj = await client2.files.create({ file: item, purpose: "assistants" }, options);
         allFileIds.push(fileObj.id);
       }
     }
@@ -6302,7 +6302,7 @@ class OpenAI {
    * Create a new client instance re-using the same options given to the current client with optional overriding.
    */
   withOptions(options) {
-    const client = new this.constructor({
+    const client2 = new this.constructor({
       ...this._options,
       baseURL: this.baseURL,
       maxRetries: this.maxRetries,
@@ -6317,7 +6317,7 @@ class OpenAI {
       webhookSecret: this.webhookSecret,
       ...options
     });
-    return client;
+    return client2;
   }
   defaultQuery() {
     return this._options.defaultQuery;
@@ -6719,7 +6719,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT
 let win;
 function createWindow() {
   win = new BrowserWindow({
-    icon: path$1.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+    icon: path$1.join(process.env.VITE_PUBLIC ?? "", "electron-vite.svg"),
     webPreferences: {
       preload: path$1.join(__dirname$1, "preload.mjs")
     }
@@ -6737,11 +6737,11 @@ function createWindow() {
     win.loadFile(path$1.join(RENDERER_DIST, "index.html"));
   }
 }
-new OpenAI({
+const client = new OpenAI({
   baseURL: "https://qianfan.baidubce.com/v2",
   apiKey: "bce-v3/ALTAK-bWi3NLXT3E7X32Fjj8LL5/3b0d63ecfcc9c65a744e7c147fa1cec6dec073dd"
 });
-new OpenAI(
+const openai = new OpenAI(
   {
     // 若没有配置环境变量，请用百炼API Key将下行替换为：apiKey: "sk-xxx",
     apiKey: "sk-41562ac6a2c64c428a7219eba7e928d2",
@@ -6760,9 +6760,63 @@ app.on("activate", () => {
   }
 });
 app.whenReady().then(createWindow);
-ipcMain.on("set-title", (event, title) => {
+ipcMain.on("start-chat", async (event, data) => {
+  var _a2, _b;
   const target = BrowserWindow.fromWebContents(event.sender);
-  target == null ? void 0 : target.setTitle(String(title));
+  if (data.title) {
+    target == null ? void 0 : target.setTitle(String(data.title));
+  }
+  const { providerName, selectedModel, messageId, messages } = data;
+  try {
+    let response;
+    if (providerName === "qianfan") {
+      response = await client.chat.completions.create({
+        model: selectedModel || "ernie-4.0-8k",
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream: true
+      });
+    } else if (providerName === "dashscope") {
+      response = await openai.chat.completions.create({
+        model: selectedModel || "qwen-plus",
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream: true
+      });
+    } else {
+      throw new Error(`Unsupported provider: ${providerName}`);
+    }
+    if (response) {
+      for await (const chunk of response) {
+        const content = ((_b = (_a2 = chunk.choices[0]) == null ? void 0 : _a2.delta) == null ? void 0 : _b.content) || "";
+        if (content) {
+          win == null ? void 0 : win.webContents.send("update-message", {
+            messageId,
+            data: {
+              is_end: false,
+              result: content
+            }
+          });
+        }
+      }
+      win == null ? void 0 : win.webContents.send("update-message", {
+        messageId,
+        data: {
+          is_end: true,
+          result: ""
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Chat Error:", error);
+    win == null ? void 0 : win.webContents.send("update-message", {
+      messageId,
+      data: {
+        is_end: true,
+        result: "",
+        is_error: true,
+        error_message: error.message
+      }
+    });
+  }
 });
 let cpuTimer = null;
 function startCpuBroadcast() {

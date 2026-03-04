@@ -13,8 +13,8 @@
         <!-- 会话内容摘要 -->
         <div class="item-content">{{ item.title }}</div>
         <!-- 时间 -->
-        <div class="item-time">{{ item.createdAt }}</div>
-        <div class="item-time">{{ item.updatedAt }}</div>
+        <div class="item-time">{{ dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
+        <div class="item-time">{{ dayjs(item.updatedAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
       </div>
     </div>
 
@@ -34,39 +34,59 @@
 
 <script lang="ts" setup>
 import Button from './Button.vue'
-import { useRouter } from 'vue-router'
 import { ConversationProps } from '../ts/type'
-import { conversations } from '../testData'
-const router = useRouter()
+import { db,initProviders } from '../db'
+import { onMounted,ref,watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import dayjs from 'dayjs'
 
+const router = useRouter()
+const route = useRoute()
+const conversations = ref<ConversationProps[]>([])
+
+// 获取会话列表
+const fetchConversations = async () => {
+  const data = await db.conversations.toArray()
+  // 按更新时间倒序排列，新活跃的在上面
+  conversations.value = data.sort((a, b) => 
+    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  )
+}
+
+// 监听路由变化，刷新会话列表（例如从首页发送消息后跳转过来）
+watch(() => route.fullPath, () => {
+  fetchConversations()
+})
 
 // 选中会话
 const selectConversation = (item: ConversationProps) => {
   console.log('选中会话:', item)
-  // 把会话 id 和模型一起通过路由参数传给右侧 MessageList
   router.push({
     path: '/message',
     query: {
       id: item.id,
       model: item.selectedModel,
+      title: item.title
     },
   })
-  // 这里可以添加切换会话的逻辑，比如把选中的会话内容传递给父组件
 }
 
 // 新建聊天
 const handleNewChat = () => {
   console.log('新建聊天')
-  router.push('/')
-  // 这里可以添加新建会话的逻辑
+  router.push('/') // 跳转到首页，显示 ProviderSelect
 }
 
 // 应用配置
 const handleConfig = () => {
   console.log('应用配置')
   router.push('/setting')
-  // 这里可以添加打开配置面板的逻辑
 }
+
+onMounted(async ()=>{
+  await initProviders()
+  await fetchConversations()
+})
 </script>
 
 <style scoped lang="scss">

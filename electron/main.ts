@@ -37,7 +37,7 @@ let win: BrowserWindow | null;
 
 function createWindow() {
   win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+    icon: path.join(process.env.VITE_PUBLIC?? '', "electron-vite.svg"),
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
     },
@@ -203,9 +203,70 @@ app.on("activate", () => {
 });
 
 app.whenReady().then(createWindow);
-ipcMain.on("set-title", (event, title) => {
+ipcMain.on("start-chat", async (event, data) => {
   const target = BrowserWindow.fromWebContents(event.sender);
-  target?.setTitle(String(title));
+  if (data.title) {
+    target?.setTitle(String(data.title));
+  }
+
+  const { providerName, selectedModel, messageId, messages } = data;
+  
+  try {
+    let response;
+    // 根据服务商选择不同的客户端
+    if (providerName === 'qianfan') {
+      response = await client.chat.completions.create({
+        model: selectedModel || "ernie-4.0-8k",
+        messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
+        stream: true,
+      });
+    } else if (providerName === 'dashscope') {
+      response = await openai.chat.completions.create({
+        model: selectedModel || "qwen-plus",
+        messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
+        stream: true,
+      });
+    } else {
+      // 默认模拟逻辑或报错
+      throw new Error(`Unsupported provider: ${providerName}`);
+    }
+
+    if (response) {
+      for await (const chunk of response) {
+        const content = chunk.choices[0]?.delta?.content || '';
+      
+        if (content) {
+          win?.webContents.send('update-message', {
+            messageId: messageId,
+            data: {
+              is_end: false,
+              result: content
+            }
+          });
+        }
+      }
+      
+      // 发送结束标识
+      win?.webContents.send('update-message', {
+        messageId: messageId,
+        data: {
+          is_end: true,
+          result: ''
+        }
+      });
+    }
+  } catch (error: any) {
+    console.error('Chat Error:', error);
+    win?.webContents.send('update-message', {
+      messageId: messageId,
+      data: {
+        is_end: true,
+        result: '',
+        is_error: true,
+        error_message: error.message
+      }
+    });
+  }
 });
 
 let cpuTimer: ReturnType<typeof setInterval> | null = null;

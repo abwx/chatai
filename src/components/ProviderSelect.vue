@@ -18,13 +18,13 @@
               <div class="selector-title">
                 {{ selectedProvider?.title || '选择服务商' }}
               </div>
-              <div class="selector-desc" v-if="selectedProvider?.desc">
-                {{ selectedProvider.desc }}
+              <div class="selector-desc">
+                {{ selectedModel || selectedProvider?.desc || '请选择模型' }}
               </div>
             </div>
           </div>
           <!-- 下拉箭头图标 -->
-          <Icon icon="radix-icons:chevron-down" width="15" height="15"></Icon>
+          <Icon icon="radix-icons:chevron-down" width="15" height="15" style="display: flex; align-items: center; justify-self: flex-end"></Icon>  
         </div>
       </DropdownMenuTrigger>
 
@@ -44,33 +44,31 @@
           <DropdownMenuSeparator class="dropdown-separator" />
           
           <!-- 模型选项组 -->
-          <DropdownMenuGroup>
+          <template v-for="provider in providers" :key="provider.id">
+            <DropdownMenuLabel class="dropdown-label provider-header">
+              <img
+                v-if="provider.avatar"
+                class="provider-avatar-mini"
+                :src="provider.avatar"
+                :alt="provider.title"
+              />
+              <span class="provider-title-text">{{ provider.title }}</span>
+            </DropdownMenuLabel>
+            
             <DropdownMenuItem 
-              v-for="model in providers" 
-              :key="model.id"
+              v-for="modelName in provider.models" 
+              :key="modelName"
               class="dropdown-item"
-              :class="{ 'dropdown-item--active': selectedModel === model.name }"
-              @select="() => selectModel(model.name)"
+              :class="{ 'dropdown-item--active': selectedModel === modelName }"
+              @select="() => selectModel(modelName)"
             >
-              <div class="provider-item">
-                <img
-                  v-if="model.avatar"
-                  class="provider-avatar"
-                  :src="model.avatar"
-                  :alt="model.title || model.name"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                />
-                <div class="provider-meta">
-                  <div class="provider-title">{{ model.title }}</div>
-                  <div class="provider-desc" v-if="model.desc">{{ model.desc }}</div>
-                  <div class="provider-models" v-if="model.models?.length">
-                    {{ model.models.slice(0, 3).join(' / ') }}<span v-if="model.models.length > 3"> ...</span>
-                  </div>
-                </div>
+              <div class="model-item-content">
+                {{ modelName }}
               </div>
             </DropdownMenuItem>
-          </DropdownMenuGroup>
+            
+            <DropdownMenuSeparator class="dropdown-separator" />
+          </template>
 
         </DropdownMenuContent>
       </DropdownMenuPortal>
@@ -117,6 +115,7 @@ import {
   DropdownMenuTrigger,
 } from 'radix-vue'
 import { db } from '../db'
+
 // 模型列表数据
 
 
@@ -126,34 +125,74 @@ const router = useRouter()
 const inputText = ref<string>('')
 const hasChatHistory = ref<boolean>(false)
 
-const selectedProvider = computed(() => providers.find((p) => p.name === selectedModel.value))
+// 查找当前选中模型所属的服务商
+const selectedProvider = computed(() => {
+  return providers.find(p => p.models.includes(selectedModel.value))
+})
 
 // 选择模型
-const selectModel = (value: string) => {
-  const targetModel = providers.find((m) => m.name === value)
-  if (targetModel) {
-    selectedModel.value = targetModel.name
-    hasChatHistory.value = false // 切换模型清空聊天状态
-  }
+const selectModel = (modelName: string) => {
+  selectedModel.value = modelName
+  hasChatHistory.value = false // 切换模型清空聊天状态
 }
-
+const createConversation = async () => {
+  const provider = providers.find(p => p.models.includes(selectedModel.value))
+  const conversationId = await db.conversations.add({
+    providerId: provider?.id || 1,
+    selectedModel: selectedModel.value,
+    title: inputText.value,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+ 
+  return conversationId
+}
 // 发送消息
-const handleSend = () => {
+const handleSend = async () => {
+    console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
   if (!inputText.value.trim() || !selectedModel.value) return
   
-  console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
+  const conversationId = await createConversation()
+  const nowStr = new Date().toISOString()
+  
+  // 1. 向数据库添加第一条问题消息
+  await db.messages.add({
+    conversationId: conversationId as number,
+    content: inputText.value,
+    type: 'question',
+    createdAt: nowStr,
+    updatedAt: nowStr,
+  })
+
+  // 2. 模拟添加一条初始的 Loading 回答消息到数据库
+  await db.messages.add({
+    conversationId: conversationId as number,
+    content: '',
+    type: 'answer',
+    status: 'loading',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+
   hasChatHistory.value = true
+  const messageContent = inputText.value
   inputText.value = ''
+  
   router.push({
     path: '/message',
-
+    query: {
+      id: conversationId,
+      model: selectedModel.value,
+      title: messageContent,
+    },
   })
 }
-async function initData() {
-  await db.providers.bulkAdd(providers)
-}
+
 onMounted(() => {
-  initData()
+  // 默认选中第一个服务商的第一个模型
+  if (providers.length > 0 && providers[0].models.length > 0) {
+    selectedModel.value = providers[0].models[0]
+  }
 })
 </script>
 
@@ -172,7 +211,7 @@ onMounted(() => {
 .model-selector {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   width: 280px;
   padding: 8px 12px;
   border: 1px solid #e5e5e5;
@@ -252,18 +291,61 @@ onMounted(() => {
   padding: 8px 0;
   z-index: 1000;
   animation: slideDown 0.2s ease-out;
+  overflow-y: auto;
+  max-height: 400px;
+
+  /* 隐藏滚动条但保留滚动功能 */
+  /* Chrome, Safari and Opera */
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  /* Firefox */
+  scrollbar-width: none;
+  /* IE and Edge */
+  -ms-overflow-style: none;
 }
 
 :deep(.dropdown-label) {
-  padding: 0 12px 4px;
-  font-size: 12px;
+  padding: 8px 12px 4px;
+  font-size: 11px;
   color: #999;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.provider-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #fafafa;
+  margin-top: 4px;
+}
+
+.provider-avatar-mini {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.provider-title-text {
+  flex: 1;
+}
+
+.model-item-content {
+  padding-left: 20px;
+  font-size: 13px;
 }
 
 :deep(.dropdown-separator) {
   margin: 4px 0;
   border-top: 1px solid #f0f0f0;
+  &:last-child {
+    display: none;
+  }
 }
 
 :deep(.dropdown-item) {

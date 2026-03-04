@@ -2,7 +2,7 @@
   <div class="chat-content">
     <!-- 表头：展示当前会话信息 -->
     <div class="message-header">
-      <div class="header-title">当前会话</div>
+      <div class="header-title">{{ currentTitlle|| '-' }}</div>
       <div class="header-info">
         <span class="header-item">ID：{{ currentConversationId || '-' }}</span>
         <span class="header-item">模型：{{ currentModel || '-' }}</span>
@@ -18,8 +18,11 @@
         :class="item.type === 'question' ? 'message-user' : 'message-assistant'"
       >
         <div class="message-bubble">
-          <div class="message-text">{{ item.content }}</div>
-          <div class="message-time" v-if="item.createdAt">{{ item.createdAt }}</div>
+          <div class="message-text" v-if="item.status === 'loading'">
+          <Icon icon="eos-icons:three-dots-loading"></Icon>
+          </div>
+          <div class="message-text" v-else>{{ item.content }}</div>
+          <div class="message-time" v-if="item.createdAt">{{ dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
         </div>
       </div>
     </div>
@@ -39,33 +42,105 @@
 </template>
 
 <script lang="ts" setup>
+
 import { MessageProps } from '../ts/type'
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { messages } from '../testData'
-  import Button from './Button.vue'
+import { db } from '../db'
+import dayjs from 'dayjs'
+import { Icon } from '@iconify/vue'
+import Button from './Button.vue'
+import { providers } from '../testData'
   const route = useRoute()
 
   // 从路由读取当前会话 id 和模型（来自 ConversationList 的点击）
-  const currentConversationId = computed(() => route.query.id as string | undefined)
+  const currentConversationId = computed(() => Number(route.query.id) || undefined)
   const currentModel = computed(() => route.query.model as string | undefined)
+  const currentTitlle =computed(()=>route.query.title as string | undefined)
 
-  // 模拟消息列表数据（和截图完全一致）
-  
+  // 消息列表数据
+  const messages = ref<MessageProps[]>([])
+
+  // 检查是否有处于 loading 状态的消息，如果有则继续从主进程获取回答
+  const fetchMessages = async (id: number) => {
+    const data = await db.messages.where('conversationId').equals(id).toArray()
+    messages.value = data.sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )
+    
+    // 检查是否有处于 loading 状态的消息，如果有则继续从主进程获取回答
+    messages.value.forEach(msg => {
+      if (msg.status === 'loading') {
+        startChatStream(msg)
+      }
+    })
+
+    nextTick(() => {
+      scrollToBottom()
+    })
+  }
+
+  // 调用主进程开始流式对话
+  const startChatStream = (loadingMsg: MessageProps) => {
+    const provider = providers.find(p => p.models.includes(currentModel.value || ''))
+    
+    // 构造历史消息
+    const history = messages.value
+      .filter(m => m.id !== loadingMsg.id && m.status !== 'loading')
+      .map(m => ({
+        role: m.type === 'question' ? 'user' : 'assistant',
+        content: m.content
+      }))
+
+    // 发起 IPC 请求
+    window.app.startChat({
+      providerName: provider?.name || 'qianfan',
+      selectedModel: currentModel.value || '',
+      messageId: loadingMsg.id,
+      messages: history,
+    })
+  }
+
+  // 监听主进程的消息推送
+  onMounted(() => {
+    window.app.onUpdateMessage((payload) => {
+      const { messageId, data } = payload
+      const index = messages.value.findIndex(m => m.id === messageId)
+      if (index === -1) return
+
+      if (!data.is_end) {
+        // 逐步累加内容，并去掉 loading 状态
+        messages.value[index].content += data.result
+        messages.value[index].status = 'streaming' as any
+      } else {
+        // 结束流式传输
+        messages.value[index].status = 'finished'
+        
+        // 持久化到数据库
+        db.messages.update(messageId, {
+          content: messages.value[index].content,
+          status: 'finished',
+          updatedAt: new Date().toISOString()
+        })
+      }
+
+      nextTick(() => {
+        scrollToBottom()
+      })
+    })
+  })
+
+  // 监听会话 ID 变化
+  watch(currentConversationId, (newId) => {
+    if (newId) {
+      fetchMessages(newId)
+    } else {
+      messages.value = []
+    }
+  }, { immediate: true })
+
   // 输入框内容
   const inputText = ref<string>('')
-
-  // 时间格式化：2026-02-25 08:30:09
-  const formatDateTime = (date: Date) => {
-    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`)
-    const year = date.getFullYear()
-    const month = pad(date.getMonth() + 1)
-    const day = pad(date.getDate())
-    const hour = pad(date.getHours())
-    const minute = pad(date.getMinutes())
-    const second = pad(date.getSeconds())
-    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
-  }
 
   // 消息列表 DOM 引用
   const messageListRef = ref<HTMLElement | null>(null)
@@ -88,27 +163,49 @@ import { messages } from '../testData'
   }
 
   // 发送消息
-  const handleSend = () => {
-    if (!inputText.value.trim()) return
+  const handleSend = async () => {
+    if (!inputText.value.trim() || !currentConversationId.value) return
 
-    const now = new Date()
-    const nowStr = formatDateTime(now)
+    const nowStr = new Date().toISOString()
+    const content = inputText.value
 
-    // 添加新消息到列表
-    messages.push({
-      type: 'question',
-      content: inputText.value,
+    // 1. 创建问题消息并存入数据库
+    const questionMessage = {
+      conversationId: currentConversationId.value,
+      content: content,
+      type: 'question' as const,
       createdAt: nowStr,
-      id: messages.length + 1,
-      conversationId: 1,
       updatedAt: nowStr,
-    })
+    }
+    const questionId = await db.messages.add(questionMessage)
+    messages.value.push({ ...questionMessage, id: questionId as number })
+    
     inputText.value = ''
+    
+    // 2. 创建一个 Loading 状态的回答并存入数据库
+    const loadingMessage = {
+      conversationId: currentConversationId.value,
+      content: '',
+      type: 'answer' as const,
+      status: 'loading' as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    const loadingId = await db.messages.add(loadingMessage)
+    const finalLoadingMsg = { ...loadingMessage, id: loadingId as number }
+    messages.value.push(finalLoadingMsg)
 
-    // 等 DOM 更新后再滚动到底部
+    // 3. 更新会话时间
+    await db.conversations.update(currentConversationId.value, {
+      updatedAt: nowStr
+    })
+
     nextTick(() => {
       scrollToBottom()
     })
+
+    // 4. 开始流式对话
+    startChatStream(finalLoadingMsg)
   }
 </script>
   
@@ -206,10 +303,12 @@ import { messages } from '../testData'
   /* 消息文本 */
   .message-text {
     font-size: 14px;
-    color: #333;
-    margin-bottom: 4px;
+    line-height: 1.5;
+    word-break: break-all;
   }
-  
+
+
+
   /* 消息时间 */
   .message-time {
     font-size: 12px;

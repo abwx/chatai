@@ -1,4 +1,5 @@
 /// <reference types="vite-plugin-electron/electron-env" />
+import { CreateChatProps, OnUpdatedCallback, AppConfig } from '../src/ts/type'
 
 declare namespace NodeJS {
   interface ProcessEnv {
@@ -22,21 +23,19 @@ declare namespace NodeJS {
 }
 
 // Used in Renderer process, expose in `preload.ts`
-interface Window {
-  ipcRenderer: import('electron').IpcRenderer
-  versions: {
-    node: string
-    chrome: string
-    electron: string
-  }
-  app: {
-    setTitle: (title: string) => void
-    getSystemInfo: () => Promise<{
-      platform: string
-      arch: string
-      release: string
-    }>
-    onCpuUsageUpdate: (callback: (usage: number) => void) => void
-    offCpuUsageUpdate: (callback: (usage: number) => void) => void
+declare global {
+  interface Window {
+    ipcRenderer: import('electron').IpcRenderer
+    versions: {
+      node: string
+      chrome: string
+      electron: string
+    }
+    app: {
+     startChat: (data: CreateChatProps) => void;
+  onUpdateMessage: (callback: OnUpdatedCallback) => any;
+    }
   }
 }
+
+export {}
