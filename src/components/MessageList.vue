@@ -12,7 +12,7 @@
     <!-- 消息列表 -->
     <div class="message-list" ref="messageListRef">
       <div
-        v-for="(item, index) in messages"
+        v-for="(item, index) in messageStore.sortedMessages"
         :key="index"
         class="message-item"
         :class="item.type === 'question' ? 'message-user' : 'message-assistant'"
@@ -21,7 +21,9 @@
           <div class="message-text" v-if="item.status === 'loading'">
           <Icon icon="eos-icons:three-dots-loading"></Icon>
           </div>
-          <div class="message-text" v-else>{{ item.content }}</div>
+          <div class="message-text" v-else>
+            <VueMarkdown :source="item.content" />
+          </div>
           <div class="message-time" v-if="item.createdAt">{{ dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
         </div>
       </div>
@@ -46,30 +48,30 @@
 import { MessageProps } from '../ts/type'
 import { ref, nextTick, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { db } from '../db'
+import { useMessageStore } from '../stores/message'
+import { useConversationStore } from '../stores/conversation'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import Button from './Button.vue'
 import { providers } from '../testData'
-  const route = useRoute()
+import VueMarkdown from 'vue-markdown-render'
 
-  // 从路由读取当前会话 id 和模型（来自 ConversationList 的点击）
-  const currentConversationId = computed(() => Number(route.query.id) || undefined)
-  const currentModel = computed(() => route.query.model as string | undefined)
-  const currentTitlle =computed(()=>route.query.title as string | undefined)
+const route = useRoute()
+const messageStore = useMessageStore()
+const conversationStore = useConversationStore()
 
-  // 消息列表数据
-  const messages = ref<MessageProps[]>([])
+// 从路由读取当前会话 id 和模型
+const currentConversationId = computed(() => Number(route.query.id) || undefined)
+const currentModel = computed(() => route.query.model as string | undefined)
+const currentTitlle = computed(() => route.query.title as string | undefined)
 
-  // 检查是否有处于 loading 状态的消息，如果有则继续从主进程获取回答
-  const fetchMessages = async (id: number) => {
-    const data = await db.messages.where('conversationId').equals(id).toArray()
-    messages.value = data.sort((a, b) => 
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
+// 监听会话 ID 变化，加载消息
+watch(currentConversationId, async (newId) => {
+  if (newId) {
+    await messageStore.fetchMessagesByConversation(newId)
     
     // 检查是否有处于 loading 状态的消息，如果有则继续从主进程获取回答
-    messages.value.forEach(msg => {
+    messageStore.sortedMessages.forEach(msg => {
       if (msg.status === 'loading') {
         startChatStream(msg)
       }
@@ -78,135 +80,127 @@ import { providers } from '../testData'
     nextTick(() => {
       scrollToBottom()
     })
+  } else {
+    messageStore.items = []
   }
+}, { immediate: true })
 
-  // 调用主进程开始流式对话
-  const startChatStream = (loadingMsg: MessageProps) => {
-    const provider = providers.find(p => p.models.includes(currentModel.value || ''))
-    
-    // 构造历史消息
-    const history = messages.value
-      .filter(m => m.id !== loadingMsg.id && m.status !== 'loading')
-      .map(m => ({
-        role: m.type === 'question' ? 'user' : 'assistant',
-        content: m.content
-      }))
+// 调用主进程开始流式对话
+const startChatStream = (loadingMsg: MessageProps) => {
+  const provider = providers.find(p => p.models.includes(currentModel.value || ''))
+  
+  // 构造历史消息（使用排序后的消息确保上下文顺序正确）
+  const history = messageStore.sortedMessages
+    .filter(m => m.id !== loadingMsg.id && m.status !== 'loading')
+    .map(m => ({
+      role: m.type === 'question' ? 'user' : 'assistant',
+      content: m.content
+    }))
 
-    // 发起 IPC 请求
-    window.app.startChat({
-      providerName: provider?.name || 'qianfan',
-      selectedModel: currentModel.value || '',
-      messageId: loadingMsg.id,
-      messages: history,
-    })
-  }
-
-  // 监听主进程的消息推送
-  onMounted(() => {
-    window.app.onUpdateMessage((payload) => {
-      const { messageId, data } = payload
-      const index = messages.value.findIndex(m => m.id === messageId)
-      if (index === -1) return
-
-      if (!data.is_end) {
-        // 逐步累加内容，并去掉 loading 状态
-        messages.value[index].content += data.result
-        messages.value[index].status = 'streaming' as any
-      } else {
-        // 结束流式传输
-        messages.value[index].status = 'finished'
-        
-        // 持久化到数据库
-        db.messages.update(messageId, {
-          content: messages.value[index].content,
-          status: 'finished',
-          updatedAt: new Date().toISOString()
-        })
-      }
-
-      nextTick(() => {
-        scrollToBottom()
-      })
-    })
+  // 发起 IPC 请求
+  window.app.startChat({
+    providerName: provider?.name || 'qianfan',
+    selectedModel: currentModel.value || '',
+    messageId: loadingMsg.id,
+    messages: history,
   })
+}
 
-  // 监听会话 ID 变化
-  watch(currentConversationId, (newId) => {
-    if (newId) {
-      fetchMessages(newId)
+// 监听主进程的消息推送
+onMounted(() => {
+  window.app.onUpdateMessage(async (payload) => {
+    const { messageId, data } = payload
+    const index = messageStore.items.findIndex(m => m.id === messageId)
+    if (index === -1) return
+
+    if (!data.is_end) {
+      // 逐步累加内容，并去掉 loading 状态
+      messageStore.items[index].content += data.result
+      messageStore.items[index].status = 'streaming'
     } else {
-      messages.value = []
-    }
-  }, { immediate: true })
-
-  // 输入框内容
-  const inputText = ref<string>('')
-
-  // 消息列表 DOM 引用
-  const messageListRef = ref<HTMLElement | null>(null)
-
-  // 滚动到列表底部（带平滑动画）
-  const scrollToBottom = () => {
-    const el = messageListRef.value
-    if (!el) return
-
-    // 优先使用原生平滑滚动
-    if (typeof el.scrollTo === 'function') {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: 'smooth'
+      // 结束流式传输
+      const finalContent = messageStore.items[index].content
+      const nowStr = new Date().toISOString()
+      
+      // 使用 store 的更新方法
+      await messageStore.updateMessage(messageId, {
+        content: finalContent,
+        status: 'finished',
+        updatedAt: nowStr
       })
-    } else {
-      // 兼容不支持 scrollTo 的情况
-      el.scrollTop = el.scrollHeight
+      
+      // 同时刷新会话列表排序
+      await conversationStore.fetchConversations()
     }
-  }
-
-  // 发送消息
-  const handleSend = async () => {
-    if (!inputText.value.trim() || !currentConversationId.value) return
-
-    const nowStr = new Date().toISOString()
-    const content = inputText.value
-
-    // 1. 创建问题消息并存入数据库
-    const questionMessage = {
-      conversationId: currentConversationId.value,
-      content: content,
-      type: 'question' as const,
-      createdAt: nowStr,
-      updatedAt: nowStr,
-    }
-    const questionId = await db.messages.add(questionMessage)
-    messages.value.push({ ...questionMessage, id: questionId as number })
-    
-    inputText.value = ''
-    
-    // 2. 创建一个 Loading 状态的回答并存入数据库
-    const loadingMessage = {
-      conversationId: currentConversationId.value,
-      content: '',
-      type: 'answer' as const,
-      status: 'loading' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    const loadingId = await db.messages.add(loadingMessage)
-    const finalLoadingMsg = { ...loadingMessage, id: loadingId as number }
-    messages.value.push(finalLoadingMsg)
-
-    // 3. 更新会话时间
-    await db.conversations.update(currentConversationId.value, {
-      updatedAt: nowStr
-    })
 
     nextTick(() => {
       scrollToBottom()
     })
+  })
+})
 
-    // 4. 开始流式对话
+// 输入框内容
+const inputText = ref<string>('')
+
+// 消息列表 DOM 引用
+const messageListRef = ref<HTMLElement | null>(null)
+
+// 滚动到列表底部
+const scrollToBottom = () => {
+  const el = messageListRef.value
+  if (!el) return
+  if (typeof el.scrollTo === 'function') {
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: 'smooth'
+    })
+  } else {
+    el.scrollTop = el.scrollHeight
+  }
+}
+
+// 发送消息
+const handleSend = async () => {
+  if (!inputText.value.trim() || !currentConversationId.value) return
+
+  const nowStr = new Date().toISOString()
+  const content = inputText.value
+
+  // 1. 创建问题消息
+  const questionId = await messageStore.createMessage({
+    conversationId: currentConversationId.value,
+    content: content,
+    type: 'question',
+    createdAt: nowStr,
+    updatedAt: nowStr,
+  })
+  
+  inputText.value = ''
+  
+  // 2. 创建一个 Loading 状态的回答
+  const loadingId = await messageStore.createMessage({
+    conversationId: currentConversationId.value,
+    content: '',
+    type: 'answer',
+    status: 'loading',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+  
+  const finalLoadingMsg = messageStore.items.find(m => m.id === loadingId)
+
+  // 3. 刷新会话列表以更新排序
+  await conversationStore.fetchConversations()
+
+  nextTick(() => {
+    scrollToBottom()
+  })
+
+  // 4. 开始流式对话
+  if (finalLoadingMsg) {
     startChatStream(finalLoadingMsg)
   }
+}
 </script>
   
   <style scoped lang="scss">
@@ -305,6 +299,28 @@ import { providers } from '../testData'
     font-size: 14px;
     line-height: 1.5;
     word-break: break-all;
+
+    :deep(p) {
+      margin-bottom: 8px;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    :deep(pre) {
+      background-color: #f1f5f9;
+      padding: 8px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    :deep(code) {
+      font-family: monospace;
+      background-color: rgba(0, 0, 0, 0.05);
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
   }
 
 

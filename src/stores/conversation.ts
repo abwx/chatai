@@ -39,6 +39,12 @@ export const useConversationStore = defineStore('conversation', {
     totalNumber: (state) => state.items.length,
     getConversationById: (state) => (id: number) => {
       return state.items.find(item => item.id === id)
+    },
+    // 按更新时间倒序排列，最新活跃的在最前面
+    sortedConversations: (state) => {
+      return [...state.items].sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )
     }
   }
 })

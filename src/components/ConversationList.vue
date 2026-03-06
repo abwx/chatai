@@ -3,18 +3,25 @@
     <!-- 左侧会话列表 -->
     <div class="conversation-list">
       <div
-        v-for="(item, index) in conversations"
+        v-for="(item, index) in conversationStore.items"
         :key="index"
         class="conversation-item"
+        :class="{ active: Number(route.query.id) === item.id }"
         @click="selectConversation(item)"
       >
         <!-- 模型名称 -->
         <div class="item-model">{{ item.selectedModel }}</div>
         <!-- 会话内容摘要 -->
-        <div class="item-content">{{ item.title }}</div>
+        <div class="item-content">
+          <VueMarkdown :source="item.title" />
+        </div>
         <!-- 时间 -->
         <div class="item-time">{{ dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
         <div class="item-time">{{ dayjs(item.updatedAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
+        <!-- 删除按钮 -->
+        <div class="delete-btn" @click="(e) => handleDelete(e, item.id)">
+          <Icon icon="radix-icons:trash" width="15" height="15"></Icon>
+        </div>
       </div>
     </div>
 
@@ -35,32 +42,26 @@
 <script lang="ts" setup>
 import Button from './Button.vue'
 import { ConversationProps } from '../ts/type'
-import { db,initProviders } from '../db'
-import { onMounted,ref,watch } from 'vue'
+import { initProviders } from '../db'
+import { onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useConversationStore } from '../stores/conversation'
 import dayjs from 'dayjs'
+import VueMarkdown from 'vue-markdown-render'
 
 const router = useRouter()
 const route = useRoute()
-const conversations = ref<ConversationProps[]>([])
+const conversationStore = useConversationStore()
 
-// 获取会话列表
-const fetchConversations = async () => {
-  const data = await db.conversations.toArray()
-  // 按更新时间倒序排列，新活跃的在上面
-  conversations.value = data.sort((a, b) => 
-    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  )
-}
-
-// 监听路由变化，刷新会话列表（例如从首页发送消息后跳转过来）
+// 监听路由变化，刷新会话列表
 watch(() => route.fullPath, () => {
-  fetchConversations()
+  conversationStore.fetchConversations()
 })
 
 // 选中会话
 const selectConversation = (item: ConversationProps) => {
   console.log('选中会话:', item)
+  conversationStore.selectedId = item.id
   router.push({
     path: '/message',
     query: {
@@ -71,9 +72,20 @@ const selectConversation = (item: ConversationProps) => {
   })
 }
 
+// 删除会话
+const handleDelete = async (e: Event, id: number) => {
+  e.stopPropagation() // 防止触发选中
+  await conversationStore.deleteConversation(id)
+  // 如果删除的是当前选中的，跳回首页
+  if (route.query.id === String(id)) {
+    router.push('/')
+  }
+}
+
 // 新建聊天
 const handleNewChat = () => {
   console.log('新建聊天')
+  conversationStore.selectedId = -1
   router.push('/') // 跳转到首页，显示 ProviderSelect
 }
 
@@ -85,7 +97,7 @@ const handleConfig = () => {
 
 onMounted(async ()=>{
   await initProviders()
-  await fetchConversations()
+  await conversationStore.fetchConversations()
 })
 </script>
 
@@ -115,14 +127,42 @@ onMounted(async ()=>{
   /* IE / Edge 旧版本 */
   -ms-overflow-style: none;
     .conversation-item {
-      padding: 12px 16px;
-      cursor: pointer;
+    padding: 12px;
+    border-bottom: 1px solid #e5e5e5;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+
+    &:hover {
+      background-color: #e8e8e8;
+      
+      .delete-btn {
+        display: flex;
+      }
+    }
+
+    &.active {
+      background-color: #e0e0e0;
+      border-left: 3px solid #10b981;
+    }
+
+    .delete-btn {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: #ef4444;
       transition: background-color 0.2s;
-      border-bottom: 1px solid #eee;
 
       &:hover {
-        background-color: #e8e8e8;
+        background-color: #fee2e2;
       }
+    }
 
       .item-model {
         font-size: 13px;
@@ -138,6 +178,13 @@ onMounted(async ()=>{
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+
+        :deep(p) {
+          margin: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
       }
 
       .item-time {

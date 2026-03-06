@@ -44,7 +44,7 @@
           <DropdownMenuSeparator class="dropdown-separator" />
           
           <!-- 模型选项组 -->
-          <template v-for="provider in providers" :key="provider.id">
+          <template v-for="provider in providerStore.items" :key="provider.id">
             <DropdownMenuLabel class="dropdown-label provider-header">
               <img
                 v-if="provider.avatar"
@@ -101,8 +101,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import Button from './Button.vue'
-import { providers } from '../testData'
 import { useRouter } from 'vue-router'
+import { useConversationStore } from '../stores/conversation'
+import { useMessageStore } from '../stores/message'
+import { useProviderStore } from '../stores/provider'
 // 严格按照你提供的 Radix Vue 导入格式
 import {
   DropdownMenuContent,
@@ -114,10 +116,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'radix-vue'
-import { db } from '../db'
-
-// 模型列表数据
-
+import { initProviders } from '../db'
 
 // 响应式数据
 const selectedModel = ref<string>('')
@@ -125,9 +124,13 @@ const router = useRouter()
 const inputText = ref<string>('')
 const hasChatHistory = ref<boolean>(false)
 
+const conversationStore = useConversationStore()
+const messageStore = useMessageStore()
+const providerStore = useProviderStore()
+
 // 查找当前选中模型所属的服务商
 const selectedProvider = computed(() => {
-  return providers.find(p => p.models.includes(selectedModel.value))
+  return providerStore.items.find(p => p.models.includes(selectedModel.value))
 })
 
 // 选择模型
@@ -135,28 +138,26 @@ const selectModel = (modelName: string) => {
   selectedModel.value = modelName
   hasChatHistory.value = false // 切换模型清空聊天状态
 }
-const createConversation = async () => {
-  const provider = providers.find(p => p.models.includes(selectedModel.value))
-  const conversationId = await db.conversations.add({
-    providerId: provider?.id || 1,
-    selectedModel: selectedModel.value,
-    title: inputText.value,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  })
- 
-  return conversationId
-}
+
 // 发送消息
 const handleSend = async () => {
     console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
   if (!inputText.value.trim() || !selectedModel.value) return
   
-  const conversationId = await createConversation()
+  const provider = providerStore.items.find(p => p.models.includes(selectedModel.value))
   const nowStr = new Date().toISOString()
+
+  // 1. 创建会话
+  const conversationId = await conversationStore.createConversation({
+    providerId: provider?.id || 1,
+    selectedModel: selectedModel.value,
+    title: inputText.value,
+    createdAt: nowStr,
+    updatedAt: nowStr,
+  })
   
-  // 1. 向数据库添加第一条问题消息
-  await db.messages.add({
+  // 2. 向数据库添加第一条问题消息
+  await messageStore.createMessage({
     conversationId: conversationId as number,
     content: inputText.value,
     type: 'question',
@@ -164,8 +165,8 @@ const handleSend = async () => {
     updatedAt: nowStr,
   })
 
-  // 2. 模拟添加一条初始的 Loading 回答消息到数据库
-  await db.messages.add({
+  // 3. 添加一条初始的 Loading 回答消息
+  await messageStore.createMessage({
     conversationId: conversationId as number,
     content: '',
     type: 'answer',
@@ -188,10 +189,12 @@ const handleSend = async () => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await initProviders()
+  await providerStore.fetchProviders()
   // 默认选中第一个服务商的第一个模型
-  if (providers.length > 0 && providers[0].models.length > 0) {
-    selectedModel.value = providers[0].models[0]
+  if (providerStore.items.length > 0 && providerStore.items[0].models.length > 0) {
+    selectedModel.value = providerStore.items[0].models[0]
   }
 })
 </script>
