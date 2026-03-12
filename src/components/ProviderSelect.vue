@@ -83,17 +83,49 @@
 
     <!-- 底部输入框 -->
     <div class="input-container">
-      <input
-        v-model="inputText"
-        type="text"
-        placeholder="请输入内容"
-        class="chat-input"
-        @keydown.enter="handleSend"
-      />
-      <Button color="green" @click="handleSend" :disabled="!inputText.trim() || !selectedModel">
-        <Icon icon="radix-icons:paper-plane" width="15" height="15"></Icon>
-        发送问题
-      </Button>
+      <!-- 图片预览区域 -->
+      <div v-if="selectedImage" class="selected-image-preview">
+        <img
+          :src="selectedImage.path"
+          alt="Preview"
+        />
+        <div class="remove-image" @click="selectedImage = null">
+          <Icon icon="radix-icons:cross-2" />
+        </div>
+      </div>
+      <!-- 文件预览区域 -->
+      <div v-if="selectedFile" class="selected-file-preview">
+        <div class="file-icon">
+          <Icon icon="bi:file-earmark-text" width="24" height="24" />
+        </div>
+        <div class="file-info">
+          <div class="file-name">{{ selectedFile.fileName }}</div>
+          <div class="file-size">{{ (selectedFile.size / 1024).toFixed(1) }} KB</div>
+        </div>
+        <div class="remove-file" @click="selectedFile = null">
+          <Icon icon="radix-icons:cross-2" />
+        </div>
+      </div>
+
+      <div class="input-wrapper">
+        <button class="image-upload-btn" @click="handleSelectImage" title="上传图片">
+          <Icon icon="radix-icons:image" width="20" height="20" />
+        </button>
+        <button class="file-upload-btn" @click="handleSelectFile" title="上传文件">
+          <Icon icon="radix-icons:file" width="20" height="20" />
+        </button>
+        <input
+          v-model="inputText"
+          type="text"
+          placeholder="请输入内容"
+          class="chat-input"
+          @keydown.enter="handleSend"
+        />
+        <Button color="green" @click="handleSend" :disabled="(!inputText.trim() && !selectedImage && !selectedFile) || !selectedModel">
+          <Icon icon="radix-icons:paper-plane" width="15" height="15"></Icon>
+          发送问题
+        </Button>
+      </div>
     </div>
   </div>
 </template>
@@ -124,6 +156,10 @@ const router = useRouter()
 const inputText = ref<string>('')
 const hasChatHistory = ref<boolean>(false)
 
+// 选中的附件
+const selectedImage = ref<{ path: string; fileName: string } | null>(null)
+const selectedFile = ref<{ path: string; fileName: string; size: number } | null>(null)
+
 const conversationStore = useConversationStore()
 const messageStore = useMessageStore()
 const providerStore = useProviderStore()
@@ -139,10 +175,28 @@ const selectModel = (modelName: string) => {
   hasChatHistory.value = false // 切换模型清空聊天状态
 }
 
+// 选择图片
+const handleSelectImage = async () => {
+  const result = await (window as any).app.selectImage()
+  if (result) {
+    selectedImage.value = result
+    selectedFile.value = null
+  }
+}
+
+// 选择文件
+const handleSelectFile = async () => {
+  const result = await (window as any).app.selectFile()
+  if (result) {
+    selectedFile.value = result
+    selectedImage.value = null
+  }
+}
+
 // 发送消息
 const handleSend = async () => {
-    console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
-  if (!inputText.value.trim() || !selectedModel.value) return
+  console.log('发送消息:', inputText.value, '使用模型:', selectedModel.value)
+  if ((!inputText.value.trim() && !selectedImage.value && !selectedFile.value) || !selectedModel.value) return
   
   const provider = providerStore.items.find(p => p.models.includes(selectedModel.value))
   const nowStr = new Date().toISOString()
@@ -151,7 +205,7 @@ const handleSend = async () => {
   const conversationId = await conversationStore.createConversation({
     providerId: provider?.id || 1,
     selectedModel: selectedModel.value,
-    title: inputText.value,
+    title: inputText.value || (selectedImage.value ? '[图片]' : '[文件]'),
     createdAt: nowStr,
     updatedAt: nowStr,
   })
@@ -161,6 +215,9 @@ const handleSend = async () => {
     conversationId: conversationId as number,
     content: inputText.value,
     type: 'question',
+    imagePath: selectedImage.value?.path,
+    filePath: selectedFile.value?.path,
+    fileName: selectedFile.value?.fileName,
     createdAt: nowStr,
     updatedAt: nowStr,
   })
@@ -184,7 +241,7 @@ const handleSend = async () => {
     query: {
       id: conversationId,
       model: selectedModel.value,
-      title: messageContent,
+      title: messageContent || (selectedImage.value ? '[图片]' : '[文件]'),
     },
   })
 }
@@ -426,42 +483,127 @@ onMounted(async () => {
 /* 底部输入框 */
 .input-container {
   display: flex;
+  flex-direction: column;
   gap: 8px;
+  padding: 12px 16px;
+  background-color: #fff;
+  border-top: 1px solid #e5e5e5;
+  margin-top: auto;
+
+  .selected-image-preview {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    margin-bottom: 8px;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
+    }
+
+    .remove-image {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      background: #ef4444;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+    }
+  }
+
+  .selected-file-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    position: relative;
+
+    .file-icon {
+      color: #64748b;
+    }
+
+    .file-info {
+      flex: 1;
+      min-width: 0;
+      .file-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: #334155;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .file-size {
+        font-size: 11px;
+        color: #94a3b8;
+      }
+    }
+
+    .remove-file {
+      width: 20px;      height: 20px;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+
+      &:hover {
+        color: #ef4444;
+      }
+    }
+  }
+
+  .input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+}
+
+.image-upload-btn,
+.file-upload-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: #f1f5f9;
+    color: #1e293b;
+  }
 }
 
 .chat-input {
   flex: 1;
   padding: 10px 12px;
   border: 1px solid #e5e5e5;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #1677ff;
-    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-  }
-}
-
-.send-btn {
-  padding: 10px 20px;
-  background-color: #1677ff;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 14px;
-
-  &:hover:not(:disabled) {
-    background-color: #4096ff;
-  }
-
-  &:disabled {
-    background-color: #c9c9c9;
-    cursor: not-allowed;
+    border-color: #3b82f6;
   }
 }
 

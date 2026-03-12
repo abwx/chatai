@@ -35,6 +35,10 @@ export const useMessageStore = defineStore('message', {
       if (index !== -1) {
         this.items[index] = { ...this.items[index], ...updatedData }
       }
+    },
+    async deleteMessage(messageId: number) {
+      await db.messages.delete(messageId)
+      this.items = this.items.filter(item => item.id !== messageId)
     }
   },
   getters: {

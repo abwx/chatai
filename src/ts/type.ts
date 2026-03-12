@@ -27,12 +27,16 @@ export interface MessageProps {
   createdAt: string;
   updatedAt: string;
   imagePath?: string;
+  filePath?: string;
+  fileName?: string;
+  fileId?: string;
 }
 
 export interface ChatMessageProps {
   role: string; 
   content: string;
   imagePath?: string;
+  fileId?: string;
 }
 export interface CreateChatProps {
   messages: ChatMessageProps[];

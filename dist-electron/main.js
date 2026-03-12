@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain } from "electron";
-import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, protocol, net, ipcMain, dialog } from "electron";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path$1 from "node:path";
-import "fs";
+import fs from "fs";
+import crypto$1 from "crypto";
 function __classPrivateFieldSet(receiver, state, value, kind, f) {
   if (typeof state === "function" ? receiver !== state || true : !state.has(receiver))
     throw new TypeError("Cannot write private member to an object whose class did not declare it");
@@ -6759,7 +6760,20 @@ app.on("activate", () => {
     createWindow();
   }
 });
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  protocol.handle("local-file", (request) => {
+    const url = request.url.replace("local-file://", "");
+    const decodedUrl = decodeURIComponent(url);
+    const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+    const fullPath = path$1.join(uploadsDir, decodedUrl);
+    if (!fullPath.startsWith(uploadsDir)) {
+      return new Response("Access Denied", { status: 403 });
+    }
+    return net.fetch(pathToFileURL(fullPath).toString());
+  });
+  createWindow();
+});
+const abortControllers = /* @__PURE__ */ new Map();
 ipcMain.on("start-chat", async (event, data) => {
   var _a2, _b;
   const target = BrowserWindow.fromWebContents(event.sender);
@@ -6767,20 +6781,70 @@ ipcMain.on("start-chat", async (event, data) => {
     target == null ? void 0 : target.setTitle(String(data.title));
   }
   const { providerName, selectedModel, messageId, messages } = data;
+  const controller = new AbortController();
+  abortControllers.set(messageId, controller);
   try {
     let response;
+    const processedMessages = [];
+    for (const m of messages) {
+      const content = [];
+      const systemMessages = [];
+      if (m.content) {
+        content.push({ type: "text", text: m.content });
+      }
+      if (m.imagePath) {
+        let finalImageUrl = m.imagePath;
+        if (m.imagePath.startsWith("local-file://")) {
+          const fileName = m.imagePath.replace("local-file://", "");
+          const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+          const fullPath = path$1.join(uploadsDir, fileName);
+          if (fs.existsSync(fullPath)) {
+            const buffer = fs.readFileSync(fullPath);
+            const ext = path$1.extname(fullPath).slice(1);
+            finalImageUrl = `data:image/${ext};base64,${buffer.toString("base64")}`;
+          }
+        }
+        content.push({ type: "image_url", image_url: { url: finalImageUrl } });
+      }
+      if (m.filePath) {
+        try {
+          const fileName = m.filePath.replace("local-file://", "");
+          const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+          const fullPath = path$1.join(uploadsDir, fileName);
+          if (fs.existsSync(fullPath)) {
+            const fileUploadResponse = await openai.files.create({
+              file: fs.createReadStream(fullPath),
+              purpose: "file-extract"
+            });
+            systemMessages.push({
+              role: "system",
+              content: `fileid://${fileUploadResponse.id}`
+            });
+          }
+        } catch (fileError) {
+          console.error("File upload to Aliyun failed:", fileError);
+        }
+      }
+      if (systemMessages.length > 0) {
+        processedMessages.push(...systemMessages);
+      }
+      processedMessages.push({
+        role: m.role,
+        content: content.length === 1 && content[0].type === "text" ? content[0].text : content
+      });
+    }
     if (providerName === "qianfan") {
       response = await client.chat.completions.create({
         model: selectedModel || "ernie-4.0-8k",
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: processedMessages,
         stream: true
-      });
+      }, { signal: controller.signal });
     } else if (providerName === "dashscope") {
       response = await openai.chat.completions.create({
         model: selectedModel || "qwen-plus",
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: processedMessages,
         stream: true
-      });
+      }, { signal: controller.signal });
     } else {
       throw new Error(`Unsupported provider: ${providerName}`);
     }
@@ -6806,14 +6870,34 @@ ipcMain.on("start-chat", async (event, data) => {
       });
     }
   } catch (error) {
-    console.error("Chat Error:", error);
+    if (error.name === "AbortError") {
+      console.log("Chat aborted by user:", messageId);
+    } else {
+      console.error("Chat Error:", error);
+      win == null ? void 0 : win.webContents.send("update-message", {
+        messageId,
+        data: {
+          is_end: true,
+          result: "",
+          is_error: true,
+          error_message: error.message
+        }
+      });
+    }
+  } finally {
+    abortControllers.delete(messageId);
+  }
+});
+ipcMain.on("stop-chat", (event, messageId) => {
+  const controller = abortControllers.get(messageId);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(messageId);
     win == null ? void 0 : win.webContents.send("update-message", {
       messageId,
       data: {
         is_end: true,
-        result: "",
-        is_error: true,
-        error_message: error.message
+        result: ""
       }
     });
   }
@@ -6844,6 +6928,60 @@ ipcMain.handle("get-system-info", () => {
   return {
     platform: process.platform,
     arch: process.arch
+  };
+});
+ipcMain.handle("get-active-chat-ids", () => {
+  return Array.from(abortControllers.keys());
+});
+ipcMain.handle("select-image", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters: [
+      { name: "Images", extensions: ["jpg", "png", "gif", "jpeg", "webp"] }
+    ]
+  });
+  if (canceled || filePaths.length === 0) return null;
+  const filePath = filePaths[0];
+  const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  const ext = path$1.extname(filePath);
+  const fileHash = crypto$1.createHash("md5").update(filePath + Date.now()).digest("hex");
+  const fileName = `${fileHash}${ext}`;
+  const destPath = path$1.join(uploadsDir, fileName);
+  fs.copyFileSync(filePath, destPath);
+  const localUrl = `local-file://${fileName}`;
+  return {
+    path: localUrl,
+    fileName
+  };
+});
+ipcMain.handle("select-file", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters: [
+      { name: "All Files", extensions: ["*"] },
+      { name: "Documents", extensions: ["pdf", "docx", "txt", "md", "csv", "xlsx"] }
+    ]
+  });
+  if (canceled || filePaths.length === 0) return null;
+  const filePath = filePaths[0];
+  const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  const ext = path$1.extname(filePath);
+  const originalName = path$1.basename(filePath);
+  const fileHash = crypto$1.createHash("md5").update(filePath + Date.now()).digest("hex");
+  const fileName = `${fileHash}${ext}`;
+  const destPath = path$1.join(uploadsDir, fileName);
+  fs.copyFileSync(filePath, destPath);
+  const stats = fs.statSync(destPath);
+  return {
+    path: `local-file://${fileName}`,
+    fileName: originalName,
+    size: stats.size
   };
 });
 export {

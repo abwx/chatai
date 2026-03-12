@@ -32,8 +32,12 @@ declare global {
       electron: string
     }
     app: {
-     startChat: (data: CreateChatProps) => void;
-  onUpdateMessage: (callback: OnUpdatedCallback) => any;
+      startChat: (data: CreateChatProps) => void;
+      onUpdateMessage: (callback: OnUpdatedCallback) => () => void;
+      selectImage: () => Promise<{ path: string; fileName: string } | null>;
+      selectFile: () => Promise<{ path: string; fileName: string; size: number } | null>;
+      stopChat: (messageId: number) => void;
+      getActiveChatIds: () => Promise<number[]>;
     }
   }
 }

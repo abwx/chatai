@@ -25,5 +25,14 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
 });
 electron.contextBridge.exposeInMainWorld("app", {
   startChat: (data) => electron.ipcRenderer.send("start-chat", data),
-  onUpdateMessage: (callback) => electron.ipcRenderer.on("update-message", (_event, value) => callback(value))
+  onUpdateMessage: (callback) => {
+    electron.ipcRenderer.removeAllListeners("update-message");
+    const subscription = (_event, value) => callback(value);
+    electron.ipcRenderer.on("update-message", subscription);
+    return () => electron.ipcRenderer.removeListener("update-message", subscription);
+  },
+  selectImage: () => electron.ipcRenderer.invoke("select-image"),
+  selectFile: () => electron.ipcRenderer.invoke("select-file"),
+  stopChat: (messageId) => electron.ipcRenderer.send("stop-chat", messageId),
+  getActiveChatIds: () => electron.ipcRenderer.invoke("get-active-chat-ids")
 });

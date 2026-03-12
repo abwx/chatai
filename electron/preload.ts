@@ -26,6 +26,15 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 });
 contextBridge.exposeInMainWorld("app", {
   startChat: (data: CreateChatProps) => ipcRenderer.send("start-chat", data),
-  onUpdateMessage: (callback: OnUpdatedCallback) =>
-    ipcRenderer.on("update-message", (_event, value) => callback(value)),
+  onUpdateMessage: (callback: OnUpdatedCallback) => {
+    // 强制移除旧监听器，防止 HMR 导致重复
+    ipcRenderer.removeAllListeners("update-message");
+    const subscription = (_event: any, value: any) => callback(value);
+    ipcRenderer.on("update-message", subscription);
+    return () => ipcRenderer.removeListener("update-message", subscription);
+  },
+  selectImage: () => ipcRenderer.invoke("select-image"),
+  selectFile: () => ipcRenderer.invoke("select-file"),
+  stopChat: (messageId: number) => ipcRenderer.send("stop-chat", messageId),
+  getActiveChatIds: () => ipcRenderer.invoke("get-active-chat-ids"),
 });

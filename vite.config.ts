@@ -20,6 +20,7 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
+    
     electron({
       main: {
         // Shortcut of `build.lib.entry`.

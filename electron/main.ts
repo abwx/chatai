@@ -1,8 +1,11 @@
-import { app, BrowserWindow, ipcMain } from "electron";
-import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import OpenAI from "openai";
 import fs from 'fs'  
+import crypto from 'crypto'
+import { ProviderFactory } from "./providers/factory";
+import { ProviderMessage } from "./providers/types";
 
 
 // 设置输出编码为 UTF-8，解决 Windows 终端中文乱码问题
@@ -202,7 +205,31 @@ app.on("activate", () => {
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // 注册自定义协议以安全地加载本地文件
+  protocol.handle('local-file', (request) => {
+    const url = request.url.replace('local-file://', '');
+    const decodedUrl = decodeURIComponent(url);
+    // 确保只访问 userData 目录下的文件，增强安全性
+    const uploadsDir = path.join(app.getPath('userData'), 'uploads');
+    const fullPath = path.join(uploadsDir, decodedUrl);
+    
+    // 安全性检查：确保路径在 uploadsDir 内
+    if (!fullPath.startsWith(uploadsDir)) {
+      return new Response('Access Denied', { status: 403 });
+    }
+    
+    // 使用 net.fetch 替代 Response.redirect
+    // 这样可以直接返回文件流，性能更好且更符合现代规范
+    return net.fetch(pathToFileURL(fullPath).toString());
+  });
+
+  createWindow();
+});
+
+// 存储活跃的请求控制器，用于中断对话
+const abortControllers = new Map<number, AbortController>();
+
 ipcMain.on("start-chat", async (event, data) => {
   const target = BrowserWindow.fromWebContents(event.sender);
   if (data.title) {
@@ -211,59 +238,65 @@ ipcMain.on("start-chat", async (event, data) => {
 
   const { providerName, selectedModel, messageId, messages } = data;
   
-  try {
-    let response;
-    // 根据服务商选择不同的客户端
-    if (providerName === 'qianfan') {
-      response = await client.chat.completions.create({
-        model: selectedModel || "ernie-4.0-8k",
-        messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
-        stream: true,
-      });
-    } else if (providerName === 'dashscope') {
-      response = await openai.chat.completions.create({
-        model: selectedModel || "qwen-plus",
-        messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
-        stream: true,
-      });
-    } else {
-      // 默认模拟逻辑或报错
-      throw new Error(`Unsupported provider: ${providerName}`);
-    }
+  // 为当前请求创建控制器
+  const controller = new AbortController();
+  abortControllers.set(messageId, controller);
 
-    if (response) {
-      for await (const chunk of response) {
-        const content = chunk.choices[0]?.delta?.content || '';
-      
-        if (content) {
-          win?.webContents.send('update-message', {
-            messageId: messageId,
-            data: {
-              is_end: false,
-              result: content
-            }
-          });
+  try {
+    const provider = ProviderFactory.create(providerName, {
+      dashscope: openai,
+      qianfan: client
+    });
+
+    await provider.chat({
+      model: selectedModel,
+      messages: messages as ProviderMessage[],
+      signal: controller.signal
+    }, (chunk) => {
+      win?.webContents.send('update-message', {
+        messageId: messageId,
+        data: {
+          is_end: chunk.isEnd,
+          result: chunk.content,
+          is_error: chunk.isError,
+          error_message: chunk.errorMessage
         }
-      }
-      
-      // 发送结束标识
+      });
+    });
+  } catch (error: any) {
+    // 如果是主动取消，不发送错误消息
+    if (error.name === 'AbortError') {
+      console.log('Chat aborted by user:', messageId);
+    } else {
+      console.error('Chat Error:', error);
       win?.webContents.send('update-message', {
         messageId: messageId,
         data: {
           is_end: true,
-          result: ''
+          result: '',
+          is_error: true,
+          error_message: error.message
         }
       });
     }
-  } catch (error: any) {
-    console.error('Chat Error:', error);
+  } finally {
+    // 结束后移除控制器
+    abortControllers.delete(messageId);
+  }
+});
+
+ipcMain.on("stop-chat", (event, messageId) => {
+  const controller = abortControllers.get(messageId);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(messageId);
+    
+    // 通知前端已停止
     win?.webContents.send('update-message', {
       messageId: messageId,
       data: {
         is_end: true,
-        result: '',
-        is_error: true,
-        error_message: error.message
+        result: ''
       }
     });
   }
@@ -297,5 +330,80 @@ ipcMain.handle("get-system-info", () => {
   return {
     platform: process.platform,
     arch: process.arch,
+  };
+});
+
+ipcMain.handle("get-active-chat-ids", () => {
+  return Array.from(abortControllers.keys());
+});
+
+ipcMain.handle("select-image", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters: [
+      { name: "Images", extensions: ["jpg", "png", "gif", "jpeg", "webp"] },
+    ],
+  });
+
+  if (canceled || filePaths.length === 0) return null;
+
+  const filePath = filePaths[0];
+  const uploadsDir = path.join(app.getPath("userData"), "uploads");
+
+  // 1. 确保目录存在
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  // 2. 生成唯一文件名 (hash + ext) 以避免命名冲突
+  const ext = path.extname(filePath);
+  const fileHash = crypto.createHash('md5').update(filePath + Date.now()).digest('hex');
+  const fileName = `${fileHash}${ext}`;
+  const destPath = path.join(uploadsDir, fileName);
+
+  // 3. 复制文件到应用目录
+  fs.copyFileSync(filePath, destPath);
+
+  // 4. 返回前端可用的 local-file 协议路径
+  const localUrl = `local-file://${fileName}`;
+
+  return {
+    path: localUrl,
+    fileName: fileName
+  };
+});
+
+ipcMain.handle("select-file", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters: [
+      { name: "All Files", extensions: ["*"] },
+      { name: "Documents", extensions: ["pdf", "docx", "txt", "md", "csv", "xlsx"] },
+    ],
+  });
+
+  if (canceled || filePaths.length === 0) return null;
+
+  const filePath = filePaths[0];
+  const uploadsDir = path.join(app.getPath("userData"), "uploads");
+
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  const ext = path.extname(filePath);
+  const originalName = path.basename(filePath);
+  const fileHash = crypto.createHash('md5').update(filePath + Date.now()).digest('hex');
+  const fileName = `${fileHash}${ext}`;
+  const destPath = path.join(uploadsDir, fileName);
+
+  fs.copyFileSync(filePath, destPath);
+
+  const stats = fs.statSync(destPath);
+
+  return {
+    path: `local-file://${fileName}`,
+    fileName: originalName,
+    size: stats.size
   };
 });
