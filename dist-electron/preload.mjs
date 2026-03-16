@@ -34,5 +34,8 @@ electron.contextBridge.exposeInMainWorld("app", {
   selectImage: () => electron.ipcRenderer.invoke("select-image"),
   selectFile: () => electron.ipcRenderer.invoke("select-file"),
   stopChat: (messageId) => electron.ipcRenderer.send("stop-chat", messageId),
-  getActiveChatIds: () => electron.ipcRenderer.invoke("get-active-chat-ids")
+  getActiveChatIds: () => electron.ipcRenderer.invoke("get-active-chat-ids"),
+  updateMenuLocale: (locale) => electron.ipcRenderer.send("update-menu-locale", locale),
+  saveConfig: (config) => electron.ipcRenderer.invoke("save-config", config),
+  getConfig: () => electron.ipcRenderer.invoke("get-config")
 });

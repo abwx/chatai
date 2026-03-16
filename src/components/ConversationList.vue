@@ -8,6 +8,7 @@
         class="conversation-item"
         :class="{ active: Number(route.query.id) === item.id }"
         @click="selectConversation(item)"
+        @contextmenu.prevent="(e) => showContextMenu(e, item.id)"
       >
         <!-- 模型名称 -->
         <div class="item-model">{{ item.selectedModel }}</div>
@@ -25,15 +26,28 @@
       </div>
     </div>
 
+    <!-- 右键菜单 -->
+    <div
+      v-if="contextMenu.visible"
+      class="context-menu"
+      :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item delete" @click="handleContextMenuDelete">
+        <Icon icon="radix-icons:trash" width="14" height="14"></Icon>
+        {{ t('sidebar.deleteConversation') || '删除对话' }}
+      </div>
+    </div>
+
     <!-- 底部按钮区 -->
     <div class="sidebar-footer">
       <Button color="green" @click="handleNewChat">
         <Icon icon="radix-icons:plus" width="15" height="15"></Icon>
-        新建聊天
+        {{ t('sidebar.newChat') }}
       </Button>
       <Button color="blue" @click="handleConfig">
         <Icon icon="radix-icons:gear" width="15" height="15"></Icon>
-        应用配置
+        {{ t('sidebar.settings') }}
       </Button>
     </div>
   </div>
@@ -43,15 +57,56 @@
 import Button from './Button.vue'
 import { ConversationProps } from '../ts/type'
 import { initProviders } from '../db'
-import { onMounted, watch } from 'vue'
+import { onMounted, watch, ref, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConversationStore } from '../stores/conversation'
 import dayjs from 'dayjs'
 import VueMarkdown from 'vue-markdown-render'
+import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 
+const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const conversationStore = useConversationStore()
+
+// 右键菜单状态
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  selectedId: -1
+})
+
+// 显示右键菜单
+const showContextMenu = (e: MouseEvent, id: number) => {
+  contextMenu.value = {
+    visible: true,
+    x: e.clientX,
+    y: e.clientY,
+    selectedId: id
+  }
+}
+
+// 关闭右键菜单
+const closeContextMenu = () => {
+  contextMenu.value.visible = false
+}
+
+// 菜单项：删除
+const handleContextMenuDelete = async () => {
+  if (contextMenu.value.selectedId !== -1) {
+    await handleDelete(new Event('click'), contextMenu.value.selectedId)
+    closeContextMenu()
+  }
+}
+
+// 监听点击事件关闭菜单
+const handleGlobalClick = () => {
+  if (contextMenu.value.visible) {
+    closeContextMenu()
+  }
+}
 
 // 监听路由变化，刷新会话列表
 watch(() => route.fullPath, () => {
@@ -75,6 +130,11 @@ const selectConversation = (item: ConversationProps) => {
 // 删除会话
 const handleDelete = async (e: Event, id: number) => {
   e.stopPropagation() // 防止触发选中
+  
+  // 添加确认步骤
+  const confirmed = window.confirm(t('sidebar.deleteConfirm'))
+  if (!confirmed) return
+
   await conversationStore.deleteConversation(id)
   // 如果删除的是当前选中的，跳回首页
   if (route.query.id === String(id)) {
@@ -98,6 +158,11 @@ const handleConfig = () => {
 onMounted(async ()=>{
   await initProviders()
   await conversationStore.fetchConversations()
+  window.addEventListener('click', handleGlobalClick)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', handleGlobalClick)
 })
 </script>
 
@@ -200,33 +265,44 @@ onMounted(async ()=>{
     border-top: 1px solid #e5e5e5;
     display: flex;
     gap: 8px;
-    justify-content: space-between;
-
-    .footer-btn {
+    
+    :deep(button) {
       flex: 1;
+      padding: 8px;
+      font-size: 13px;
+    }
+  }
+
+  .context-menu {
+    position: fixed;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px;
+    z-index: 1000;
+    min-width: 120px;
+    border: 1px solid #e5e5e5;
+
+    .context-menu-item {
       padding: 8px 12px;
-      border: none;
-      border-radius: 4px;
-      font-size: 14px;
+      font-size: 13px;
+      color: #333;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 4px;
       transition: background-color 0.2s;
 
-      &.primary {
-        background-color: #1677ff;
-        color: #fff;
-
-        &:hover {
-          background-color: #4096ff;
-        }
+      &:hover {
+        background-color: #f3f4f6;
       }
 
-      &:not(.primary) {
-        background-color: #fff;
-        color: #333;
-        border: 1px solid #d9d9d9;
-
+      &.delete {
+        color: #ef4444;
+        
         &:hover {
-          background-color: #f5f5f5;
+          background-color: #fee2e2;
         }
       }
     }

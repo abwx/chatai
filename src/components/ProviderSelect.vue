@@ -16,10 +16,10 @@
             />
             <div class="selector-text">
               <div class="selector-title">
-                {{ selectedProvider?.title || '选择服务商' }}
+                {{ selectedProvider?.title || t('home.selectProvider') }}
               </div>
               <div class="selector-desc">
-                {{ selectedModel || selectedProvider?.desc || '请选择模型' }}
+                {{ selectedModel || selectedProvider?.desc || t('home.selectModel') }}
               </div>
             </div>
           </div>
@@ -38,7 +38,7 @@
           :side-offset="4"
         >
           <!-- 下拉菜单标题 -->
-          <DropdownMenuLabel class="dropdown-label">服务商选择</DropdownMenuLabel>
+          <DropdownMenuLabel class="dropdown-label">{{ t('home.selectProvider') }}</DropdownMenuLabel>
           
           <!-- 分隔线 -->
           <DropdownMenuSeparator class="dropdown-separator" />
@@ -77,7 +77,7 @@
     <!-- 中间聊天内容区（可滚动） -->
     <div class="chat-content">
       <div class="chat-placeholder" v-if="!hasChatHistory">
-        <p>请选择模型并输入问题开始对话</p>
+        <p>{{ t('home.welcome') }}</p>
       </div>
     </div>
 
@@ -108,22 +108,22 @@
       </div>
 
       <div class="input-wrapper">
-        <button class="image-upload-btn" @click="handleSelectImage" title="上传图片">
+        <button class="image-upload-btn" @click="handleSelectImage" :title="t('chat.uploadImage')">
           <Icon icon="radix-icons:image" width="20" height="20" />
         </button>
-        <button class="file-upload-btn" @click="handleSelectFile" title="上传文件">
+        <button class="file-upload-btn" @click="handleSelectFile" :title="t('chat.uploadFile')">
           <Icon icon="radix-icons:file" width="20" height="20" />
         </button>
         <input
           v-model="inputText"
           type="text"
-          placeholder="请输入内容"
+          :placeholder="t('home.placeholder')"
           class="chat-input"
           @keydown.enter="handleSend"
         />
         <Button color="green" @click="handleSend" :disabled="(!inputText.trim() && !selectedImage && !selectedFile) || !selectedModel">
           <Icon icon="radix-icons:paper-plane" width="15" height="15"></Icon>
-          发送问题
+          {{ t('home.sendQuestion') }}
         </Button>
       </div>
     </div>
@@ -137,6 +137,7 @@ import { useRouter } from 'vue-router'
 import { useConversationStore } from '../stores/conversation'
 import { useMessageStore } from '../stores/message'
 import { useProviderStore } from '../stores/provider'
+import { useI18n } from 'vue-i18n'
 // 严格按照你提供的 Radix Vue 导入格式
 import {
   DropdownMenuContent,
@@ -160,6 +161,7 @@ const hasChatHistory = ref<boolean>(false)
 const selectedImage = ref<{ path: string; fileName: string } | null>(null)
 const selectedFile = ref<{ path: string; fileName: string; size: number } | null>(null)
 
+const { t } = useI18n()
 const conversationStore = useConversationStore()
 const messageStore = useMessageStore()
 const providerStore = useProviderStore()

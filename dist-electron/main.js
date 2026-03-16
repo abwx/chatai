@@ -1,8 +1,9 @@
-import { app, BrowserWindow, protocol, net, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, protocol, net, ipcMain, dialog, Menu } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path$1 from "node:path";
-import fs from "fs";
+import fs$1 from "fs";
 import crypto$1 from "crypto";
+import fs from "node:fs";
 function __classPrivateFieldSet(receiver, state, value, kind, f) {
   if (typeof state === "function" ? receiver !== state || true : !state.has(receiver))
     throw new TypeError("Cannot write private member to an object whose class did not declare it");
@@ -6707,6 +6708,159 @@ OpenAI.Evals = Evals;
 OpenAI.Containers = Containers;
 OpenAI.Skills = Skills;
 OpenAI.Videos = Videos;
+class BaseProvider {
+  async processMessages(messages) {
+    const processedMessages = [];
+    for (const m of messages) {
+      const content = [];
+      const systemMessages = [];
+      if (m.content && typeof m.content === "string") {
+        content.push({ type: "text", text: m.content });
+      } else if (Array.isArray(m.content)) {
+        content.push(...m.content);
+      }
+      const images = m.imagePaths || (m.imagePath ? [m.imagePath] : []);
+      for (const imgPath of images) {
+        let finalImageUrl = imgPath;
+        if (imgPath.startsWith("local-file://")) {
+          const fileName = imgPath.replace("local-file://", "");
+          const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+          const fullPath = path$1.join(uploadsDir, fileName);
+          if (fs.existsSync(fullPath)) {
+            const buffer = fs.readFileSync(fullPath);
+            const ext = path$1.extname(fullPath).slice(1);
+            finalImageUrl = `data:image/${ext};base64,${buffer.toString("base64")}`;
+          }
+        }
+        content.push({ type: "image_url", image_url: { url: finalImageUrl } });
+      }
+      const fileContext = await this.handleFileContext(m);
+      if (fileContext) {
+        systemMessages.push(fileContext);
+      }
+      if (systemMessages.length > 0) {
+        processedMessages.push(...systemMessages);
+      }
+      processedMessages.push({
+        role: m.role,
+        content: content.length === 1 && content[0].type === "text" ? content[0].text : content
+      });
+    }
+    return processedMessages;
+  }
+  async handleFileContext(message) {
+    return null;
+  }
+}
+class DashscopeProvider extends BaseProvider {
+  constructor(client2) {
+    super();
+    this.client = client2;
+  }
+  async handleFileContext(message) {
+    if (message.filePath) {
+      try {
+        const fileName = message.filePath.replace("local-file://", "");
+        const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
+        const fullPath = path$1.join(uploadsDir, fileName);
+        if (fs.existsSync(fullPath)) {
+          const fileUploadResponse = await this.client.files.create({
+            file: fs.createReadStream(fullPath),
+            purpose: "file-extract"
+          });
+          return {
+            role: "system",
+            content: `fileid://${fileUploadResponse.id}`
+          };
+        }
+      } catch (fileError) {
+        console.error("File upload to Aliyun failed:", fileError);
+      }
+    }
+    return null;
+  }
+  async chat(options, onChunk) {
+    var _a2, _b;
+    const processedMessages = await this.processMessages(options.messages);
+    const response = await this.client.chat.completions.create({
+      model: options.model || "qwen-plus",
+      messages: processedMessages,
+      stream: true,
+      stream_options: { include_usage: true }
+    }, { signal: options.signal });
+    for await (const chunk of response) {
+      const content = ((_b = (_a2 = chunk.choices[0]) == null ? void 0 : _a2.delta) == null ? void 0 : _b.content) || "";
+      if (content) {
+        onChunk({ content, isEnd: false });
+      }
+    }
+    onChunk({ content: "", isEnd: true });
+  }
+}
+class QianfanProvider extends BaseProvider {
+  constructor(client2) {
+    super();
+    this.client = client2;
+  }
+  async chat(options, onChunk) {
+    var _a2, _b;
+    const processedMessages = await this.processMessages(options.messages);
+    const response = await this.client.chat.completions.create({
+      model: options.model || "ernie-4.0-8k",
+      messages: processedMessages,
+      stream: true
+    }, { signal: options.signal });
+    for await (const chunk of response) {
+      const content = ((_b = (_a2 = chunk.choices[0]) == null ? void 0 : _a2.delta) == null ? void 0 : _b.content) || "";
+      if (content) {
+        onChunk({ content, isEnd: false });
+      }
+    }
+    onChunk({ content: "", isEnd: true });
+  }
+}
+class ProviderFactory {
+  static create(providerName, clients) {
+    var _a2, _b;
+    if (!providerName) {
+      throw new Error("Provider name is required");
+    }
+    const userConfig = (_b = (_a2 = clients.userConfigs) == null ? void 0 : _a2.find((c) => {
+      var _a3;
+      return ((_a3 = c.id) == null ? void 0 : _a3.toLowerCase()) === providerName.toLowerCase();
+    })) == null ? void 0 : _b.config;
+    switch (providerName.toLowerCase()) {
+      case "dashscope":
+      case "aliyun": {
+        const client2 = (userConfig == null ? void 0 : userConfig.accessKey) ? new OpenAI({
+          apiKey: userConfig.accessKey,
+          baseURL: userConfig.baseUrl || "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        }) : clients.dashscope;
+        return new DashscopeProvider(client2);
+      }
+      case "qianfan":
+      case "baidu": {
+        const client2 = (userConfig == null ? void 0 : userConfig.accessKey) ? new OpenAI({
+          apiKey: userConfig.accessKey,
+          baseURL: userConfig.baseUrl || "https://qianfan.baidubce.com/v2"
+        }) : clients.qianfan;
+        return new QianfanProvider(client2);
+      }
+      case "openai": {
+        if (!(userConfig == null ? void 0 : userConfig.accessKey)) {
+          throw new Error("OpenAI API Key is required. Please configure it in settings.");
+        }
+        const client2 = new OpenAI({
+          apiKey: userConfig.accessKey,
+          baseURL: userConfig.baseUrl || "https://api.openai.com/v1"
+        });
+        return new DashscopeProvider(client2);
+      }
+      default:
+        throw new Error(`Unsupported provider: "${providerName}". Current supported providers are: aliyun (dashscope), baidu (qianfan), and openai.`);
+    }
+  }
+}
 if (process.platform === "win32") {
   process.stdout.setDefaultEncoding("utf8");
   process.stderr.setDefaultEncoding("utf8");
@@ -6718,6 +6872,104 @@ const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let win;
+const menuTranslations = {
+  zh: {
+    edit: "编辑",
+    undo: "撤销",
+    redo: "重做",
+    cut: "剪切",
+    copy: "复制",
+    paste: "粘贴",
+    selectAll: "全选",
+    view: "视图",
+    reload: "重新加载",
+    toggleDevTools: "开发者工具",
+    window: "窗口",
+    minimize: "最小化",
+    close: "关闭",
+    help: "帮助",
+    debug: "调试",
+    actualSize: "实际大小",
+    zoomIn: "放大",
+    zoomOut: "缩小",
+    toggleFullScreen: "切换全屏",
+    zoom: "缩放"
+  },
+  en: {
+    edit: "Edit",
+    undo: "Undo",
+    redo: "Redo",
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    selectAll: "Select All",
+    view: "View",
+    reload: "Reload",
+    toggleDevTools: "Toggle Developer Tools",
+    window: "Window",
+    minimize: "Minimize",
+    close: "Close",
+    help: "Help",
+    debug: "Debug",
+    actualSize: "Actual Size",
+    zoomIn: "Zoom In",
+    zoomOut: "Zoom Out",
+    toggleFullScreen: "Toggle Full Screen",
+    zoom: "Zoom"
+  }
+};
+function createMenu(locale = "zh") {
+  const t = menuTranslations[locale] || menuTranslations.zh;
+  const template = [
+    {
+      label: t.edit,
+      submenu: [
+        { label: t.undo, role: "undo" },
+        { label: t.redo, role: "redo" },
+        { type: "separator" },
+        { label: t.cut, role: "cut" },
+        { label: t.copy, role: "copy" },
+        { label: t.paste, role: "paste" },
+        { label: t.selectAll, role: "selectAll" }
+      ]
+    },
+    {
+      label: t.view,
+      submenu: [
+        { label: t.reload, role: "reload" },
+        { label: t.toggleDevTools, role: "toggleDevTools" },
+        { type: "separator" },
+        { label: t.actualSize, role: "resetZoom" },
+        { label: t.zoomIn, role: "zoomIn" },
+        { label: t.zoomOut, role: "zoomOut" },
+        { type: "separator" },
+        { label: t.toggleFullScreen, role: "togglefullscreen" }
+      ]
+    },
+    {
+      label: t.debug,
+      submenu: [
+        {
+          label: t.toggleDevTools,
+          accelerator: process.platform === "darwin" ? "Alt+Command+I" : "Ctrl+Shift+I",
+          click: () => {
+            win == null ? void 0 : win.webContents.toggleDevTools();
+          }
+        }
+      ]
+    },
+    {
+      label: t.window,
+      submenu: [
+        { label: t.minimize, role: "minimize" },
+        { label: t.zoom, role: "zoom" },
+        { label: t.close, role: "close" }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 function createWindow() {
   win = new BrowserWindow({
     icon: path$1.join(process.env.VITE_PUBLIC ?? "", "electron-vite.svg"),
@@ -6771,11 +7023,11 @@ app.whenReady().then(() => {
     }
     return net.fetch(pathToFileURL(fullPath).toString());
   });
+  createMenu();
   createWindow();
 });
 const abortControllers = /* @__PURE__ */ new Map();
 ipcMain.on("start-chat", async (event, data) => {
-  var _a2, _b;
   const target = BrowserWindow.fromWebContents(event.sender);
   if (data.title) {
     target == null ? void 0 : target.setTitle(String(data.title));
@@ -6784,91 +7036,34 @@ ipcMain.on("start-chat", async (event, data) => {
   const controller = new AbortController();
   abortControllers.set(messageId, controller);
   try {
-    let response;
-    const processedMessages = [];
-    for (const m of messages) {
-      const content = [];
-      const systemMessages = [];
-      if (m.content) {
-        content.push({ type: "text", text: m.content });
+    let userConfigs = {};
+    if (fs$1.existsSync(configPath)) {
+      try {
+        userConfigs = JSON.parse(fs$1.readFileSync(configPath, "utf-8"));
+      } catch (e) {
+        console.error("Config parse error:", e);
       }
-      if (m.imagePath) {
-        let finalImageUrl = m.imagePath;
-        if (m.imagePath.startsWith("local-file://")) {
-          const fileName = m.imagePath.replace("local-file://", "");
-          const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
-          const fullPath = path$1.join(uploadsDir, fileName);
-          if (fs.existsSync(fullPath)) {
-            const buffer = fs.readFileSync(fullPath);
-            const ext = path$1.extname(fullPath).slice(1);
-            finalImageUrl = `data:image/${ext};base64,${buffer.toString("base64")}`;
-          }
-        }
-        content.push({ type: "image_url", image_url: { url: finalImageUrl } });
-      }
-      if (m.filePath) {
-        try {
-          const fileName = m.filePath.replace("local-file://", "");
-          const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
-          const fullPath = path$1.join(uploadsDir, fileName);
-          if (fs.existsSync(fullPath)) {
-            const fileUploadResponse = await openai.files.create({
-              file: fs.createReadStream(fullPath),
-              purpose: "file-extract"
-            });
-            systemMessages.push({
-              role: "system",
-              content: `fileid://${fileUploadResponse.id}`
-            });
-          }
-        } catch (fileError) {
-          console.error("File upload to Aliyun failed:", fileError);
-        }
-      }
-      if (systemMessages.length > 0) {
-        processedMessages.push(...systemMessages);
-      }
-      processedMessages.push({
-        role: m.role,
-        content: content.length === 1 && content[0].type === "text" ? content[0].text : content
-      });
     }
-    if (providerName === "qianfan") {
-      response = await client.chat.completions.create({
-        model: selectedModel || "ernie-4.0-8k",
-        messages: processedMessages,
-        stream: true
-      }, { signal: controller.signal });
-    } else if (providerName === "dashscope") {
-      response = await openai.chat.completions.create({
-        model: selectedModel || "qwen-plus",
-        messages: processedMessages,
-        stream: true
-      }, { signal: controller.signal });
-    } else {
-      throw new Error(`Unsupported provider: ${providerName}`);
-    }
-    if (response) {
-      for await (const chunk of response) {
-        const content = ((_b = (_a2 = chunk.choices[0]) == null ? void 0 : _a2.delta) == null ? void 0 : _b.content) || "";
-        if (content) {
-          win == null ? void 0 : win.webContents.send("update-message", {
-            messageId,
-            data: {
-              is_end: false,
-              result: content
-            }
-          });
-        }
-      }
+    const provider = ProviderFactory.create(providerName, {
+      dashscope: openai,
+      qianfan: client,
+      userConfigs: userConfigs.modelProviders || []
+    });
+    await provider.chat({
+      model: selectedModel,
+      messages,
+      signal: controller.signal
+    }, (chunk) => {
       win == null ? void 0 : win.webContents.send("update-message", {
         messageId,
         data: {
-          is_end: true,
-          result: ""
+          is_end: chunk.isEnd,
+          result: chunk.content,
+          is_error: chunk.isError,
+          error_message: chunk.errorMessage
         }
       });
-    }
+    });
   } catch (error) {
     if (error.name === "AbortError") {
       console.log("Chat aborted by user:", messageId);
@@ -6933,6 +7128,31 @@ ipcMain.handle("get-system-info", () => {
 ipcMain.handle("get-active-chat-ids", () => {
   return Array.from(abortControllers.keys());
 });
+ipcMain.on("update-menu-locale", (event, locale) => {
+  createMenu(locale);
+});
+const configPath = path$1.join(app.getPath("userData"), "config.json");
+ipcMain.handle("get-config", () => {
+  if (fs$1.existsSync(configPath)) {
+    try {
+      const data = fs$1.readFileSync(configPath, "utf-8");
+      return JSON.parse(data);
+    } catch (e) {
+      console.error("Failed to read config:", e);
+      return {};
+    }
+  }
+  return {};
+});
+ipcMain.handle("save-config", (event, config) => {
+  try {
+    fs$1.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    return { success: true };
+  } catch (e) {
+    console.error("Failed to save config:", e);
+    return { success: false, error: String(e) };
+  }
+});
 ipcMain.handle("select-image", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ["openFile"],
@@ -6943,14 +7163,14 @@ ipcMain.handle("select-image", async () => {
   if (canceled || filePaths.length === 0) return null;
   const filePath = filePaths[0];
   const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+  if (!fs$1.existsSync(uploadsDir)) {
+    fs$1.mkdirSync(uploadsDir, { recursive: true });
   }
   const ext = path$1.extname(filePath);
   const fileHash = crypto$1.createHash("md5").update(filePath + Date.now()).digest("hex");
   const fileName = `${fileHash}${ext}`;
   const destPath = path$1.join(uploadsDir, fileName);
-  fs.copyFileSync(filePath, destPath);
+  fs$1.copyFileSync(filePath, destPath);
   const localUrl = `local-file://${fileName}`;
   return {
     path: localUrl,
@@ -6968,16 +7188,16 @@ ipcMain.handle("select-file", async () => {
   if (canceled || filePaths.length === 0) return null;
   const filePath = filePaths[0];
   const uploadsDir = path$1.join(app.getPath("userData"), "uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+  if (!fs$1.existsSync(uploadsDir)) {
+    fs$1.mkdirSync(uploadsDir, { recursive: true });
   }
   const ext = path$1.extname(filePath);
   const originalName = path$1.basename(filePath);
   const fileHash = crypto$1.createHash("md5").update(filePath + Date.now()).digest("hex");
   const fileName = `${fileHash}${ext}`;
   const destPath = path$1.join(uploadsDir, fileName);
-  fs.copyFileSync(filePath, destPath);
-  const stats = fs.statSync(destPath);
+  fs$1.copyFileSync(filePath, destPath);
+  const stats = fs$1.statSync(destPath);
   return {
     path: `local-file://${fileName}`,
     fileName: originalName,

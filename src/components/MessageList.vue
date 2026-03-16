@@ -1,11 +1,12 @@
 <template>
   <div class="chat-content">
-    <!-- 表头：展示当前会话信息 -->
     <div class="message-header">
       <div class="header-title">{{ currentTitle || "-" }}</div>
       <div class="header-info">
-        <span class="header-item">ID：{{ currentConversationId || "-" }}</span>
-        <span class="header-item">模型：{{ currentModel || "-" }}</span>
+        <div class="header-model">
+          <Icon icon="radix-icons:cube" />
+          {{ currentModel }}
+        </div>
       </div>
     </div>
 
@@ -77,10 +78,10 @@
         </div>
       </div>
       <div class="input-wrapper">
-        <button class="image-upload-btn" @click="handleSelectImage" title="上传图片">
+        <button class="image-upload-btn" @click="handleSelectImage" :title="t('chat.uploadImage')">
           <Icon icon="radix-icons:image" width="20" height="20" />
         </button>
-        <button class="file-upload-btn" @click="handleSelectFile" title="上传文件">
+        <button class="file-upload-btn" @click="handleSelectFile" :title="t('chat.uploadFile')">
           <Icon icon="radix-icons:file" width="20" height="20" />
         </button>
         <input
@@ -90,10 +91,12 @@
           class="chat-input"
           @keydown.enter="handleSend"
         />
-        <Button v-if="isStreaming" color="red" @click="handleStop"
-          >停止回答</Button
-        >
-        <Button v-else color="green" @click="handleSend">发送</Button>
+        <Button v-if="isStreaming" color="red" @click="handleStop">
+          {{ t('common.stop') }}
+        </Button>
+        <Button v-else color="green" @click="handleSend">
+          {{ t('common.send') }}
+        </Button>
       </div>
     </div>
 
@@ -118,6 +121,7 @@ import { MessageProps } from "../ts/type";
 import { ref, nextTick, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useMessageStore } from "../stores/message";
+import { useI18n } from "vue-i18n";
 import { useConversationStore } from "../stores/conversation";
 import dayjs from "dayjs";
 import { Icon } from "@iconify/vue";
@@ -139,6 +143,7 @@ const formatMarkdownContent = (content: string) => {
   return formatted;
 };
 
+const { t } = useI18n();
 const route = useRoute();
 const messageStore = useMessageStore();
 const conversationStore = useConversationStore();
@@ -237,6 +242,18 @@ onMounted(() => {
     const { messageId, data } = payload;
     const index = messageStore.items.findIndex((m) => m.id === messageId);
     if (index === -1) return;
+
+    if (data.is_error) {
+      // 处理错误情况
+      messageStore.items[index].content = data.error_message || 'Unknown error occurred';
+      messageStore.items[index].status = "error";
+      await messageStore.updateMessage(messageId, {
+        content: messageStore.items[index].content,
+        status: "finished",
+        updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
 
     if (!data.is_end) {
       // 逐步累加内容，并去掉 loading 状态

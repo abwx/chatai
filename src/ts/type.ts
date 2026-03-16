@@ -45,15 +45,16 @@ export interface CreateChatProps {
   messageId: number;
 }
 
-export interface UpdatgedStreamData {
+export interface UpdatedStreamData {
   messageId: number;
   data: {
     is_end: boolean;
     result: string;
     is_error?: boolean;
+    error_message?: string;
   }
 }
-export type OnUpdatedCallback = (data: UpdatgedStreamData) => void;
+export type OnUpdatedCallback = (data: UpdatedStreamData) => void;
 
 export interface MessageListInstance {
   ref: HTMLDivElement

@@ -37,4 +37,7 @@ contextBridge.exposeInMainWorld("app", {
   selectFile: () => ipcRenderer.invoke("select-file"),
   stopChat: (messageId: number) => ipcRenderer.send("stop-chat", messageId),
   getActiveChatIds: () => ipcRenderer.invoke("get-active-chat-ids"),
+  updateMenuLocale: (locale: string) => ipcRenderer.send("update-menu-locale", locale),
+  saveConfig: (config: any) => ipcRenderer.invoke("save-config", config),
+  getConfig: () => ipcRenderer.invoke("get-config"),
 });

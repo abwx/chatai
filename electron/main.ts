@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, MenuItemConstructorOptions } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import OpenAI from "openai";
@@ -37,6 +37,108 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST;
 
 let win: BrowserWindow | null;
+
+// 菜单翻译
+const menuTranslations: Record<string, any> = {
+  zh: {
+    edit: '编辑',
+    undo: '撤销',
+    redo: '重做',
+    cut: '剪切',
+    copy: '复制',
+    paste: '粘贴',
+    selectAll: '全选',
+    view: '视图',
+    reload: '重新加载',
+    toggleDevTools: '开发者工具',
+    window: '窗口',
+    minimize: '最小化',
+    close: '关闭',
+    help: '帮助',
+    debug: '调试',
+    actualSize: '实际大小',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    toggleFullScreen: '切换全屏',
+    zoom: '缩放'
+  },
+  en: {
+    edit: 'Edit',
+    undo: 'Undo',
+    redo: 'Redo',
+    cut: 'Cut',
+    copy: 'Copy',
+    paste: 'Paste',
+    selectAll: 'Select All',
+    view: 'View',
+    reload: 'Reload',
+    toggleDevTools: 'Toggle Developer Tools',
+    window: 'Window',
+    minimize: 'Minimize',
+    close: 'Close',
+    help: 'Help',
+    debug: 'Debug',
+    actualSize: 'Actual Size',
+    zoomIn: 'Zoom In',
+    zoomOut: 'Zoom Out',
+    toggleFullScreen: 'Toggle Full Screen',
+    zoom: 'Zoom'
+  }
+};
+
+function createMenu(locale: string = 'zh') {
+  const t = menuTranslations[locale] || menuTranslations.zh;
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: t.edit,
+      submenu: [
+        { label: t.undo, role: 'undo' },
+        { label: t.redo, role: 'redo' },
+        { type: 'separator' },
+        { label: t.cut, role: 'cut' },
+        { label: t.copy, role: 'copy' },
+        { label: t.paste, role: 'paste' },
+        { label: t.selectAll, role: 'selectAll' }
+      ]
+    },
+    {
+      label: t.view,
+      submenu: [
+        { label: t.reload, role: 'reload' },
+        { label: t.toggleDevTools, role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: t.actualSize, role: 'resetZoom' },
+        { label: t.zoomIn, role: 'zoomIn' },
+        { label: t.zoomOut, role: 'zoomOut' },
+        { type: 'separator' },
+        { label: t.toggleFullScreen, role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: t.debug,
+      submenu: [
+        {
+          label: t.toggleDevTools,
+          accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+          click: () => {
+            win?.webContents.toggleDevTools();
+          }
+        }
+      ]
+    },
+    {
+      label: t.window,
+      submenu: [
+        { label: t.minimize, role: 'minimize' },
+        { label: t.zoom, role: 'zoom' },
+        { label: t.close, role: 'close' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -210,20 +312,17 @@ app.whenReady().then(() => {
   protocol.handle('local-file', (request) => {
     const url = request.url.replace('local-file://', '');
     const decodedUrl = decodeURIComponent(url);
-    // 确保只访问 userData 目录下的文件，增强安全性
     const uploadsDir = path.join(app.getPath('userData'), 'uploads');
     const fullPath = path.join(uploadsDir, decodedUrl);
     
-    // 安全性检查：确保路径在 uploadsDir 内
     if (!fullPath.startsWith(uploadsDir)) {
       return new Response('Access Denied', { status: 403 });
     }
     
-    // 使用 net.fetch 替代 Response.redirect
-    // 这样可以直接返回文件流，性能更好且更符合现代规范
     return net.fetch(pathToFileURL(fullPath).toString());
   });
 
+  createMenu(); // 初始化菜单
   createWindow();
 });
 
@@ -243,9 +342,20 @@ ipcMain.on("start-chat", async (event, data) => {
   abortControllers.set(messageId, controller);
 
   try {
+    // 读取最新的配置 (增加更严谨的 try-catch)
+    let userConfigs: any = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        userConfigs = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      } catch (e) {
+        console.error('Config parse error:', e);
+      }
+    }
+
     const provider = ProviderFactory.create(providerName, {
       dashscope: openai,
-      qianfan: client
+      qianfan: client,
+      userConfigs: userConfigs.modelProviders || []
     });
 
     await provider.chat({
@@ -335,6 +445,38 @@ ipcMain.handle("get-system-info", () => {
 
 ipcMain.handle("get-active-chat-ids", () => {
   return Array.from(abortControllers.keys());
+});
+
+ipcMain.on("update-menu-locale", (event, locale) => {
+  createMenu(locale);
+});
+
+// 配置文件路径
+const configPath = path.join(app.getPath('userData'), 'config.json');
+
+// 读取配置
+ipcMain.handle("get-config", () => {
+  if (fs.existsSync(configPath)) {
+    try {
+      const data = fs.readFileSync(configPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (e) {
+      console.error('Failed to read config:', e);
+      return {};
+    }
+  }
+  return {};
+});
+
+// 保存配置
+ipcMain.handle("save-config", (event, config) => {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    return { success: true };
+  } catch (e) {
+    console.error('Failed to save config:', e);
+    return { success: false, error: String(e) };
+  }
 });
 
 ipcMain.handle("select-image", async () => {
