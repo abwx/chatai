@@ -1,5 +1,5 @@
 import { ipcRenderer, contextBridge } from "electron";
-import { CreateChatProps, OnUpdatedCallback, AppConfig } from "../src/ts/type";
+import { CreateChatProps, OnUpdatedCallback } from "../src/ts/type";
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld("ipcRenderer", {
   on(...args: Parameters<typeof ipcRenderer.on>) {

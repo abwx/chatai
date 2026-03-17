@@ -355,7 +355,7 @@ const handleSend = async () => {
   const fileName = selectedFile.value?.fileName;
 
   // 1. 创建问题消息
-  const questionId = await messageStore.createMessage({
+  await messageStore.createMessage({
     conversationId: currentConversationId.value,
     content: content,
     type: "question",

@@ -1,9 +1,9 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "com.v3chatai.app",
   "asar": true,
-  "productName": "YourAppName",
+  "productName": "V3ChatAI",
   "directories": {
     "output": "release/${version}"
   },
@@ -24,8 +24,9 @@
         "arch": [
           "x64"
         ]
-      }
-    ],
+      }，
+     
+    ], icon: "./src/assets/extension.ico"
     "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
   "nsis": {

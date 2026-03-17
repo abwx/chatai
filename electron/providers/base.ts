@@ -54,7 +54,7 @@ export abstract class BaseProvider {
     return processedMessages;
   }
 
-  protected async handleFileContext(message: ProviderMessage): Promise<any | null> {
+  protected async handleFileContext(_message: ProviderMessage): Promise<any | null> {
     // 默认不处理，子类按需实现
     return null;
   }

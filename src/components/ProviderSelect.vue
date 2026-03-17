@@ -141,7 +141,6 @@ import { useI18n } from 'vue-i18n'
 // 严格按照你提供的 Radix Vue 导入格式
 import {
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuPortal,
