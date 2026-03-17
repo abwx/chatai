@@ -172,13 +172,12 @@ function createWindow() {
 // 这里只是演示，可以先直接写死测试，再改成从 env 读取
 const client = new OpenAI({
    baseURL: 'https://qianfan.baidubce.com/v2',
-    apiKey: 'bce-v3/ALTAK-bWi3NLXT3E7X32Fjj8LL5/3b0d63ecfcc9c65a744e7c147fa1cec6dec073dd'
+    apiKey: process.env.QIANFAN_API_KEY
 });
 
 const openai = new OpenAI(
   {
-      // 若没有配置环境变量，请用百炼API Key将下行替换为：apiKey: "sk-xxx",
-      apiKey: 'sk-41562ac6a2c64c428a7219eba7e928d2',
+      apiKey: process.env.DASHSCOPE_API_KEY,
       baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   }
 );
