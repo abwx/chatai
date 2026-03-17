@@ -24,11 +24,18 @@
         "arch": [
           "x64"
         ]
-      }，
-     
-    ], icon: "./src/assets/extension.ico"
+      }
+    ],
+    "icon": "./src/assets/extension.ico",
     "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "your-github-username",
+      "repo": "your-repo-name"
+    }
+  ],
   "nsis": {
     "oneClick": false,
     "perMachine": false,

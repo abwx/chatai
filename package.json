@@ -1,11 +1,16 @@
 {
   "name": "my-electron-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-github-username/your-repo-name.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build && electron-builder",
+    "release": "vue-tsc && vite build && electron-builder --publish always",
     "preview": "vite preview"
   },
   "dependencies": {

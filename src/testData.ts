@@ -29,7 +29,7 @@ export const providers: ProviderProps[] = [
     id: 1,
     name: 'qianfan',
     title: '百度千帆',
-    desc: '文心一言 百度出品的大模型',
+    desc: '文心一言 百度出品的大模型xs',
     models: ['ERNIE-4.0-8K', 'ERNIE-3.5-8K', 'ERNIE-Speed-128K'],
     avatar: 'https://aip-static.cdn.bcebos.com/landing/product/ernie-bote321e5.png',
     createdAt: '2024-07-03',
