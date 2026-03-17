@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.env
 # Electron 打包产物（核心忽略项）
 release/
 dist/
