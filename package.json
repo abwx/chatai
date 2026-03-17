@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-github-username/your-repo-name.git"
+    "url": "https://github.com/abwx/chatai.git"
   },
   "type": "module",
   "scripts": {

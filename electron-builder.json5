@@ -32,8 +32,8 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "your-github-username",
-      "repo": "your-repo-name"
+      "owner": "abwx",
+      "repo": "chatai"
     }
   ],
   "nsis": {
