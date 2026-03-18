@@ -333,6 +333,12 @@ app.whenReady().then(() => {
   // 检查自动更新
   if (app.isPackaged) {
     // 增加详细的更新监听日志
+      dialog.showMessageBox({
+    type: 'info',
+    title: '测试',
+    message: '更新检查代码已执行！',
+    buttons: ['确定']
+  });
     autoUpdater.on('checking-for-update', () => {
       console.log('正在检查更新...');
     });
@@ -351,7 +357,7 @@ app.whenReady().then(() => {
     });
 
     autoUpdater.on('update-not-available', (info) => {
-      console.log('当前已是最新版本。');
+      console.log('当前已是最新版本。',info);
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
