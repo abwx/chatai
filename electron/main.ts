@@ -332,13 +332,40 @@ app.whenReady().then(() => {
 
   // 检查自动更新
   if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify();
-    
-    autoUpdater.on('update-downloaded', () => {
+    // 增加详细的更新监听日志
+    autoUpdater.on('checking-for-update', () => {
+      console.log('正在检查更新...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('发现新版本:', info.version);
+      // 如果你想在发现更新时也弹窗提醒用户正在下载，可以取消下面注释
+      /*
+      dialog.showMessageBox({
+        type: 'info',
+        title: '发现更新',
+        message: `发现新版本 ${info.version}，正在后台下载...`,
+        buttons: ['确定']
+      });
+      */
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('当前已是最新版本。');
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      let log_message = "下载速度: " + (progressObj.bytesPerSecond / 1024 / 1024).toFixed(2) + " MB/s";
+      log_message = log_message + ' - 已下载 ' + progressObj.percent.toFixed(2) + '%';
+      console.log(log_message);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('新版本已下载完成:', info.version);
       dialog.showMessageBox({
         type: 'info',
         title: '更新可用',
-        message: '新版本已下载完成，将立即重启安装。',
+        message: `新版本 ${info.version} 已下载完成，将立即重启安装。`,
         buttons: ['确定']
       }).then(() => {
         autoUpdater.quitAndInstall();
@@ -346,8 +373,11 @@ app.whenReady().then(() => {
     });
 
     autoUpdater.on('error', (err) => {
-      console.error('AutoUpdater Error:', err);
+      console.error('自动更新出错:', err);
     });
+
+    // 立即执行检查
+    autoUpdater.checkForUpdatesAndNotify();
   }
 });
 
