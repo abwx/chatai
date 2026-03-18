@@ -331,60 +331,91 @@ app.whenReady().then(() => {
   createWindow();
 
   // 检查自动更新
-  if (app.isPackaged) {
-    // 增加详细的更新监听日志
-      dialog.showMessageBox({
+if (app.isPackaged) {
+  // 测试弹窗：确认代码执行
+  dialog.showMessageBox({
     type: 'info',
     title: '测试',
     message: '更新检查代码已执行！',
     buttons: ['确定']
+  }).then(() => {
+    // 等用户点确定后，再开始检查更新（避免弹窗重叠）
+    startCheckUpdate();
   });
-    autoUpdater.on('checking-for-update', () => {
-      console.log('正在检查更新...');
-    });
 
-    autoUpdater.on('update-available', (info) => {
-      console.log('发现新版本:', info.version);
-      // 如果你想在发现更新时也弹窗提醒用户正在下载，可以取消下面注释
-      /*
+  // 封装更新检查逻辑
+  function startCheckUpdate() {
+    // 1. 检查更新中（弹窗提示）
+    autoUpdater.on('checking-for-update', () => {
       dialog.showMessageBox({
         type: 'info',
-        title: '发现更新',
-        message: `发现新版本 ${info.version}，正在后台下载...`,
+        title: '检查更新',
+        message: '正在检查 GitHub 上的新版本...',
         buttons: ['确定']
       });
-      */
     });
 
-    autoUpdater.on('update-not-available', (info) => {
-      console.log('当前已是最新版本。',info);
-    });
-
-    autoUpdater.on('download-progress', (progressObj) => {
-      let log_message = "下载速度: " + (progressObj.bytesPerSecond / 1024 / 1024).toFixed(2) + " MB/s";
-      log_message = log_message + ' - 已下载 ' + progressObj.percent.toFixed(2) + '%';
-      console.log(log_message);
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-      console.log('新版本已下载完成:', info.version);
+    // 2. 发现新版本（弹窗提示+自动下载）
+    autoUpdater.on('update-available', (info) => {
       dialog.showMessageBox({
         type: 'info',
-        title: '更新可用',
-        message: `新版本 ${info.version} 已下载完成，将立即重启安装。`,
+        title: '发现新版本',
+        message: `检测到新版本：${info.version}\n正在后台下载更新包...`,
+        buttons: ['确定']
+      }).then(() => {
+        // 自动下载（如果之前关了autoDownload，这里手动触发）
+        autoUpdater.downloadUpdate();
+      });
+    });
+
+    // 3. 无更新（关键！之前没弹窗，现在强制提示）
+    autoUpdater.on('update-not-available', (info) => {
+      dialog.showMessageBox({
+        type: 'info',
+        title: '已是最新版',
+        message: `当前版本：${app.getVersion()}\n最新版本：${info.version}\n无需更新！`,
+        buttons: ['确定']
+      });
+    });
+
+    // 4. 下载进度（弹窗实时提示）
+    autoUpdater.on('download-progress', (progressObj) => {
+      const speed = (progressObj.bytesPerSecond / 1024 / 1024).toFixed(2);
+      const percent = progressObj.percent.toFixed(2);
+      dialog.showMessageBox({
+        type: 'info',
+        title: '更新下载中',
+        message: `下载进度：${percent}%\n下载速度：${speed} MB/s`,
+        buttons: ['确定']
+      });
+    });
+
+    // 5. 下载完成（提示重启）
+    autoUpdater.on('update-downloaded', (info) => {
+      dialog.showMessageBox({
+        type: 'info',
+        title: '更新完成',
+        message: `新版本 ${info.version} 已下载完成！\n点击确定立即重启安装。`,
         buttons: ['确定']
       }).then(() => {
         autoUpdater.quitAndInstall();
       });
     });
 
+    // 6. 更新出错（强制弹窗，暴露具体错误）
     autoUpdater.on('error', (err) => {
-      console.error('自动更新出错:', err);
+      dialog.showErrorBox(
+        '更新失败',
+        `检查/下载更新时出错：\n${err.message}\n${err.stack || '无详细堆栈'}`
+      );
     });
 
-    // 立即执行检查
-    autoUpdater.checkForUpdatesAndNotify();
+    // 主动触发检查（替换 checkForUpdatesAndNotify，更稳定）
+    autoUpdater.checkForUpdates().catch(err => {
+      dialog.showErrorBox('检查更新初始化失败', err.message);
+    });
   }
+}
 });
 
 // 存储活跃的请求控制器，用于中断对话
