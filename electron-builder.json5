@@ -26,7 +26,7 @@
         ]
       }
     ],
-    "icon": "./src/assets/extension.ico",
+    "icon": "./src/assets/extension.ico.ico",
     "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
   "publish": [

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, MenuItemConstructorOptions } from "electron";
+import { autoUpdater } from "electron-updater";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import OpenAI from "openai";
@@ -172,12 +173,12 @@ function createWindow() {
 // 这里只是演示，可以先直接写死测试，再改成从 env 读取
 const client = new OpenAI({
    baseURL: 'https://qianfan.baidubce.com/v2',
-    apiKey: process.env.QIANFAN_API_KEY
+    apiKey: process.env.QIANFAN_API_KEY || 'not-set'
 });
 
 const openai = new OpenAI(
   {
-      apiKey: process.env.DASHSCOPE_API_KEY,
+      apiKey: process.env.DASHSCOPE_API_KEY || 'not-set',
       baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   }
 );
@@ -328,6 +329,26 @@ app.whenReady().then(() => {
 
   createMenu(); // 初始化菜单
   createWindow();
+
+  // 检查自动更新
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify();
+    
+    autoUpdater.on('update-downloaded', () => {
+      dialog.showMessageBox({
+        type: 'info',
+        title: '更新可用',
+        message: '新版本已下载完成，将立即重启安装。',
+        buttons: ['确定']
+      }).then(() => {
+        autoUpdater.quitAndInstall();
+      });
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('AutoUpdater Error:', err);
+    });
+  }
 });
 
 // 存储活跃的请求控制器，用于中断对话
